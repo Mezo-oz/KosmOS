@@ -1,0 +1,241 @@
+#!/usr/bin/env bash
+# ============================================================================
+# RF-Linux Kernel Build Script for Raspberry Pi 5
+# ============================================================================
+# Run this inside your Debian ARM64 UTM VM.
+#
+# WHAT THIS DOES:
+#   1. Installs build dependencies
+#   2. Clones the Raspberry Pi kernel source (their fork, not mainline)
+#   3. Starts from the Pi 5's default config (bcm2712_defconfig)
+#   4. Merges our SDR/RT customizations on top
+#   5. Opens menuconfig so you can review and tweak
+#   6. Builds the kernel, modules, and device tree blobs
+#   7. Packages everything into a tarball ready to SCP
+#
+# WHY THE PI KERNEL FORK AND NOT MAINLINE:
+#   The Raspberry Pi Foundation maintains their own kernel fork at
+#   github.com/raspberrypi/linux. It's based on mainline Linux but includes
+#   patches for Pi-specific hardware (VideoCore GPU, PCIe controller, the
+#   RP1 I/O chip on Pi 5, etc). Think of it like how Cisco IOS is based on
+#   BSD but with Cisco-specific drivers bolted on. You *can* use mainline,
+#   but you'd be missing drivers for half the hardware on the board.
+#
+# WHY bcm2712_defconfig:
+#   This is the Pi Foundation's known-good starting config for the Pi 5's
+#   BCM2712 SoC. It's like using a vendor's default switch template —
+#   everything that the hardware needs is already enabled, and you customize
+#   from there instead of guessing what's needed.
+# ============================================================================
+
+set -euo pipefail  # Exit on error, undefined vars, pipe failures
+
+# === CONFIGURATION ===
+# Change these if you want a different kernel branch or build directory
+KERNEL_BRANCH="rpi-6.12.y"       # Latest Pi LTS branch with RT support
+BUILD_DIR="$HOME/rf-linux"
+KERNEL_DIR="$BUILD_DIR/linux"
+OUTPUT_DIR="$BUILD_DIR/output"
+PACKAGE_DIR="$BUILD_DIR/rf-linux-kernel-pkg"
+
+# Number of parallel build jobs — use all cores
+# This is like setting worker threads on a build server.
+# More cores = faster build, but also more RAM usage (~1.5GB per job).
+# On 4GB VM RAM, use $(nproc). If you get OOM kills, drop to 2.
+JOBS=$(nproc)
+
+echo "============================================"
+echo "  RF-Linux Kernel Build for Raspberry Pi 5"
+echo "============================================"
+echo "Branch:     $KERNEL_BRANCH"
+echo "Build dir:  $BUILD_DIR"
+echo "CPU cores:  $JOBS"
+echo ""
+
+# === STEP 1: Install Build Dependencies ===
+# These are the tools the kernel build system needs.
+# Think of this as installing the toolchain before you can compile firmware.
+echo "[1/7] Installing build dependencies..."
+sudo apt-get update
+sudo apt-get install -y \
+    git bc bison flex libssl-dev \
+    libncurses5-dev libncurses-dev \
+    libelf-dev dwarves \
+    build-essential \
+    kmod cpio \
+    rsync
+
+# === STEP 2: Clone the Pi Kernel Source ===
+# --depth 1 = shallow clone (only latest commit, not full history)
+# This saves ~3GB of download. It's like doing a partial sync instead of
+# a full database replication — you get the current state without the
+# entire changelog.
+echo ""
+echo "[2/7] Cloning Raspberry Pi kernel source..."
+echo "       (This is ~1.5GB, may take a while)"
+
+mkdir -p "$BUILD_DIR"
+cd "$BUILD_DIR"
+
+if [ -d "$KERNEL_DIR" ]; then
+    echo "       Kernel source already exists, pulling latest..."
+    cd "$KERNEL_DIR"
+    git pull
+else
+    git clone --depth 1 --branch "$KERNEL_BRANCH" \
+        https://github.com/raspberrypi/linux.git
+    cd "$KERNEL_DIR"
+fi
+
+# === STEP 3: Start From Pi 5 Default Config ===
+# bcm2712_defconfig is the Pi Foundation's blessed config for Pi 5.
+# This sets ~4000 config options to sane defaults for the BCM2712 SoC.
+# We'll layer our SDR customizations on top of this.
+echo ""
+echo "[3/7] Loading Pi 5 default config (bcm2712_defconfig)..."
+make bcm2712_defconfig
+
+# === STEP 4: Apply SDR/RT Kernel Config Fragment ===
+# A "config fragment" is a partial .config that overrides specific options.
+# Think of it like a YAML override file — the base config has everything,
+# and the fragment says "change these specific knobs."
+#
+# The merge_config.sh script is built into the kernel source tree.
+# It takes the current .config and merges in our fragment, resolving
+# any dependency chains automatically. For example, if we enable AX25,
+# the script also enables CONFIG_HAMRADIO because AX25 depends on it.
+echo ""
+echo "[4/7] Merging SDR/RT config fragment..."
+
+# Copy our fragment into the kernel tree
+FRAGMENT_PATH="$BUILD_DIR/sdr-rt.config"
+
+if [ ! -f "$FRAGMENT_PATH" ]; then
+    echo "ERROR: Config fragment not found at $FRAGMENT_PATH"
+    echo "       Run this script from the rf-linux build directory,"
+    echo "       and make sure sdr-rt.config is present."
+    exit 1
+fi
+
+# merge_config.sh lives in scripts/kconfig/ inside the kernel source
+# The -m flag tells it to merge (not replace) with the existing .config
+./scripts/kconfig/merge_config.sh -m .config "$FRAGMENT_PATH"
+
+# === STEP 5: Interactive Review ===
+# menuconfig lets you see what we've changed and make your own tweaks.
+# Every SDR-related option from our fragment will already be set.
+# You can browse around, verify things look right, and save.
+#
+# NAVIGATION REMINDER:
+#   Arrow keys = move, Enter = enter submenu, Space = toggle option
+#   Y = built-in [*], M = module [M], N = disabled [ ]
+#   / = search for a config option by name
+#   ? on any option = show help text explaining what it does
+echo ""
+echo "[5/7] Opening menuconfig for review..."
+echo "       Our SDR/RT changes are already applied."
+echo "       Review, tweak if needed, then Save and Exit."
+echo ""
+echo "       KEY SECTIONS TO CHECK:"
+echo "         General setup → Preemption Model → should say 'Full RT'"
+echo "         Networking → Amateur Radio → AX.25 should be [M]"
+echo "         Device Drivers → Multimedia → RTL2832 SDR should be [M]"
+echo ""
+read -p "       Press Enter to open menuconfig..."
+
+make menuconfig
+
+# === STEP 6: Build Everything ===
+# This is the big one. On a 4-core ARM64 VM with 4GB RAM, expect:
+#   - ~45-90 minutes for a full build
+#   - ~2GB of disk space for build artifacts
+#
+# What gets built:
+#   - Image         : The kernel binary itself (what the Pi bootloader loads)
+#   - modules       : .ko files (loadable kernel modules, like plugins)
+#   - dtbs          : Device Tree Blobs (hardware description files —
+#                     think of these as a manifest that tells the kernel
+#                     "here's what hardware is on this board and where
+#                     it's mapped in memory." Without the right DTB, the
+#                     kernel boots but can't find the USB controller, GPU,
+#                     etc. It's like an ARP table for hardware.)
+echo ""
+echo "[6/7] Building kernel (this will take a while)..."
+echo "       Using $JOBS parallel jobs"
+echo "       Started at: $(date)"
+echo ""
+
+# Build the kernel image
+make -j"$JOBS" Image
+
+# Build loadable modules
+make -j"$JOBS" modules
+
+# Build device tree blobs and overlays
+make -j"$JOBS" dtbs
+
+echo ""
+echo "       Build finished at: $(date)"
+
+# === STEP 7: Package for Transfer ===
+# We now collect everything the Pi needs into a single tarball:
+#   - Image                    → goes to /boot/firmware/
+#   - modules (.ko files)      → go to /lib/modules/<version>/
+#   - dtbs and overlays        → go to /boot/firmware/
+#   - System.map               → kernel symbol table (for debugging)
+#
+# On the Pi, the install script will put each piece in the right place.
+echo ""
+echo "[7/7] Packaging kernel for transfer..."
+
+KERNEL_VERSION=$(make kernelrelease)
+echo "       Kernel version: $KERNEL_VERSION"
+
+rm -rf "$PACKAGE_DIR"
+mkdir -p "$PACKAGE_DIR"/{boot,modules}
+
+# Copy kernel image
+# The Pi 5 bootloader looks for "kernel_2712.img" by default,
+# but we'll use a custom name and point config.txt at it.
+cp arch/arm64/boot/Image "$PACKAGE_DIR/boot/kernel-rflinux.img"
+
+# Install modules to our package directory
+# INSTALL_MOD_PATH tells make "pretend this is the root filesystem"
+make modules_install INSTALL_MOD_PATH="$PACKAGE_DIR/modules"
+
+# Copy device tree blobs
+cp arch/arm64/boot/dts/broadcom/bcm2712*.dtb "$PACKAGE_DIR/boot/"
+
+# Copy overlays (hardware configuration fragments)
+mkdir -p "$PACKAGE_DIR/boot/overlays"
+cp arch/arm64/boot/dts/overlays/*.dtbo "$PACKAGE_DIR/boot/overlays/" 2>/dev/null || true
+
+# Copy config and symbol map for reference
+cp .config "$PACKAGE_DIR/kernel-config"
+cp System.map "$PACKAGE_DIR/System.map"
+
+# Store version string
+echo "$KERNEL_VERSION" > "$PACKAGE_DIR/kernel-version"
+
+# Create the tarball
+cd "$BUILD_DIR"
+TARBALL="rf-linux-kernel-${KERNEL_VERSION}.tar.gz"
+tar czf "$TARBALL" -C "$PACKAGE_DIR" .
+
+echo ""
+echo "============================================"
+echo "  BUILD COMPLETE"
+echo "============================================"
+echo "  Kernel version:  $KERNEL_VERSION"
+echo "  Package:         $BUILD_DIR/$TARBALL"
+echo "  Size:            $(du -h "$BUILD_DIR/$TARBALL" | cut -f1)"
+echo ""
+echo "  Next steps:"
+echo "    1. SCP to your Pi:"
+echo "       scp $BUILD_DIR/$TARBALL pi@<PI_IP>:~/"
+echo ""
+echo "    2. On the Pi, run the install script:"
+echo "       tar xzf $TARBALL -C ~/rf-kernel"
+echo "       sudo bash ~/rf-kernel/install-kernel.sh"
+echo ""
+echo "============================================"

@@ -1,0 +1,4 @@
+linux/
+rf-linux-kernel-pkg/
+rf-linux-kernel-*.tar.gz
+*.o
