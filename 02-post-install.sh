@@ -26,22 +26,26 @@ KVER=$(uname -r)
 echo -n "Kernel version:       $KVER "
 if echo "$KVER" | grep -qi "rflinux\|rt\|6\.12"; then
     echo -e "${GREEN}[OK]${NC}"
-    ((PASS++))
+    # BUG FIX: ((PASS++)) exits with code 1 when PASS=0 under set -e,
+    # because bash treats ((0)) as a failure. Using arithmetic assignment
+    # instead avoids this. Same trap as a C-style for loop returning
+    # the value of the expression — 0 is "false" in bash arithmetic.
+    PASS=$((PASS + 1))
 else
     echo -e "${YELLOW}[CHECK - may still be stock kernel]${NC}"
-    ((FAIL++))
+    FAIL=$((FAIL + 1))
 fi
 
 # --- Real-Time ---
 echo -n "RT scheduling:        "
 if [ -f /sys/kernel/realtime ] && [ "$(cat /sys/kernel/realtime)" = "1" ]; then
     echo -e "${GREEN}ENABLED [OK]${NC}"
-    ((PASS++))
+    PASS=$((PASS + 1))
 else
     echo -e "${RED}NOT DETECTED [FAIL]${NC}"
     echo "  → CONFIG_PREEMPT_RT may not have been set."
     echo "    Check: grep PREEMPT_RT /boot/config-$(uname -r)"
-    ((FAIL++))
+    FAIL=$((FAIL + 1))
 fi
 
 # --- Timer Frequency ---
@@ -51,7 +55,7 @@ HZ=$(grep "CONFIG_HZ=" /proc/config.gz 2>/dev/null | head -1 || \
      echo "unknown")
 if echo "$HZ" | grep -q "1000"; then
     echo -e "1000 Hz ${GREEN}[OK]${NC}"
-    ((PASS++))
+    PASS=$((PASS + 1))
 else
     echo -e "$HZ ${YELLOW}[CHECK]${NC}"
 fi
@@ -61,7 +65,7 @@ echo -n "CPU governor:         "
 GOV=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || echo "unknown")
 if [ "$GOV" = "performance" ]; then
     echo -e "performance ${GREEN}[OK]${NC}"
-    ((PASS++))
+    PASS=$((PASS + 1))
 else
     echo -e "$GOV ${YELLOW}[not performance — set manually if needed]${NC}"
     echo "  → To fix: echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor"
@@ -71,17 +75,17 @@ fi
 echo -n "USB subsystem:        "
 if lsusb &>/dev/null; then
     echo -e "${GREEN}[OK]${NC}"
-    ((PASS++))
+    PASS=$((PASS + 1))
 else
     echo -e "${RED}[FAIL - lsusb not working]${NC}"
-    ((FAIL++))
+    FAIL=$((FAIL + 1))
 fi
 
 # --- AX.25 Module ---
 echo -n "AX.25 module:         "
 if modprobe ax25 2>/dev/null; then
     echo -e "${GREEN}[OK - loaded]${NC}"
-    ((PASS++))
+    PASS=$((PASS + 1))
     # Clean up — unload it for now
     rmmod ax25 2>/dev/null || true
 else
@@ -92,7 +96,7 @@ fi
 echo -n "/proc/config.gz:      "
 if [ -f /proc/config.gz ]; then
     echo -e "${GREEN}[OK]${NC}"
-    ((PASS++))
+    PASS=$((PASS + 1))
 else
     echo -e "${YELLOW}[not available]${NC}"
     echo "  → Enable CONFIG_IKCONFIG and CONFIG_IKCONFIG_PROC in your kernel"
@@ -103,7 +107,7 @@ echo -n "Russian locale:       "
 CURRENT_LANG=$(locale 2>/dev/null | grep "^LANG=" | cut -d= -f2)
 if echo "$CURRENT_LANG" | grep -qi "ru_RU"; then
     echo -e "${GREEN}$CURRENT_LANG [OK]${NC}"
-    ((PASS++))
+    PASS=$((PASS + 1))
 else
     echo -e "${YELLOW}not set (will configure during install)${NC}"
 fi
@@ -140,6 +144,7 @@ sudo apt-get install -y \
     libboost-all-dev \
     libsndfile1-dev \
     libpulse-dev \
+    libncurses-dev \
     sox \
     python3-dev python3-pip python3-numpy python3-scipy python3-matplotlib
 
@@ -200,6 +205,8 @@ echo "       Done."
 
 echo ""
 echo "[5/7] Installing dump1090 (ADS-B decoder)..."
+# NOTE: dump1090 requires libncurses-dev (included in step 1 deps).
+# Without it, the build fails with "curses.h: No such file or directory."
 cd /tmp
 if [ -d dump1090 ]; then rm -rf dump1090; fi
 git clone https://github.com/flightaware/dump1090
@@ -210,7 +217,17 @@ echo "       Done."
 
 echo ""
 echo "[6/7] Installing satellite tools..."
-sudo apt-get install -y predict
+# NOTE: 'predict' is not in Pi OS repos — must be built from source.
+# The project uses a curses-based installer (installer.c), not a standard
+# Makefile install target. We compile the installer with ncurses linked,
+# then run it as root.
+cd /tmp
+if [ -d predict ]; then rm -rf predict; fi
+git clone https://github.com/kd2bd/predict
+cd predict
+cc -o installer installer.c -lncurses -lm
+sudo ./installer
+
 # gpredict needs a desktop environment — skip if headless
 if [ -n "${DISPLAY:-}" ] || [ -n "${WAYLAND_DISPLAY:-}" ]; then
     sudo apt-get install -y gpredict
@@ -268,6 +285,12 @@ export LANG=ru_RU.UTF-8
 
 echo "       Russian locale configured."
 echo "       Date test: $(date '+%A, %d %B %Y г.')"
+echo ""
+echo "       NOTE on HDMI console Cyrillic:"
+echo "         If Cyrillic shows as squares on the HDMI console, run:"
+echo "         sudo dpkg-reconfigure console-setup"
+echo "         Select: UTF-8 → Guess optimal → Terminus → 8x16"
+echo "         SSH terminals handle Cyrillic natively — no config needed."
 echo ""
 echo "       NOTE: If you need English error messages for Googling errors:"
 echo "         export LC_MESSAGES=en_US.UTF-8"
