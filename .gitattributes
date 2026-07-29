@@ -1,0 +1,7 @@
+# These are Linux shell scripts and a Linux kernel config fragment. A CRLF in
+# them is a real failure, not a cosmetic one: a shebang gains a trailing \r and
+# the script dies with "bad interpreter", and merge_config.sh carries the \r
+# into config values. Force LF regardless of anyone's core.autocrlf setting.
+*.sh text eol=lf
+*.config text eol=lf
+.gitignore text eol=lf

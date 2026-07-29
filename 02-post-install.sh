@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# RF-Linux Post-Install Verification & Userspace Setup
+# KosmOs Post-Install Verification & Userspace Setup
 # ============================================================================
 # Run this ON THE PI after rebooting into your custom kernel.
 # It verifies the kernel is correct, then installs SDR userspace tools.
@@ -14,7 +14,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 echo "============================================"
-echo "  RF-Linux Post-Install Verification"
+echo "  KosmOs Post-Install Verification"
 echo "============================================"
 echo ""
 
@@ -24,7 +24,11 @@ FAIL=0
 # --- Kernel Version ---
 KVER=$(uname -r)
 echo -n "Kernel version:       $KVER "
-if echo "$KVER" | grep -qi "rflinux\|rt\|6\.12"; then
+# Match "kosmos" only. The old pattern also accepted "rt" or "6.12", which a
+# stock Raspberry Pi OS 6.12 kernel satisfies -- so this check reported [OK]
+# whether or not the custom kernel was actually running. CONFIG_LOCALVERSION
+# in sdr-rt.config is what puts "kosmos" in the version string.
+if echo "$KVER" | grep -qi "kosmos"; then
     echo -e "${GREEN}[OK]${NC}"
     # BUG FIX: ((PASS++)) exits with code 1 when PASS=0 under set -e,
     # because bash treats ((0)) as a failure. Using arithmetic assignment

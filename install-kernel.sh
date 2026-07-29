@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# RF-Linux Kernel Install Script — Run this ON the Raspberry Pi 5
+# KosmOs Kernel Install Script — Run this ON the Raspberry Pi 5
 # ============================================================================
 # This script takes the kernel package built in your VM and installs it
 # onto the Pi's SD card. It's non-destructive: it backs up your existing
@@ -11,13 +11,13 @@
 #   Pi 5 Boot Partition Layout (/boot/firmware/):
 #   ├── config.txt          ← Bootloader config (we modify this)
 #   ├── kernel_2712.img     ← Stock Pi 5 kernel (we DON'T touch this)
-#   ├── kernel-rflinux.img  ← OUR custom kernel (added)
+#   ├── kernel-kosmos.img  ← OUR custom kernel (added)
 #   ├── bcm2712*.dtb        ← Device tree blobs (we update these)
 #   └── overlays/           ← Hardware overlay fragments (we update these)
 #
 #   Module Directory (/lib/modules/):
 #   ├── 6.x.y-v8+/         ← Stock kernel modules (untouched)
-#   └── 6.x.y-rflinux+/    ← OUR kernel modules (added)
+#   └── 6.x.y-kosmos+/    ← OUR kernel modules (added)
 #
 # THE SAFETY NET:
 #   We don't overwrite the stock kernel. Instead, we add ours alongside it
@@ -41,7 +41,7 @@ NC='\033[0m' # No Color
 
 # === Sanity Checks ===
 echo -e "${GREEN}============================================${NC}"
-echo -e "${GREEN}  RF-Linux Kernel Installer for Pi 5${NC}"
+echo -e "${GREEN}  KosmOs Kernel Installer for Pi 5${NC}"
 echo -e "${GREEN}============================================${NC}"
 echo ""
 
@@ -65,10 +65,10 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 echo "Package directory: $SCRIPT_DIR"
 
 # Check required files exist
-if [ ! -f "$SCRIPT_DIR/boot/kernel-rflinux.img" ]; then
-    echo -e "${RED}ERROR: kernel-rflinux.img not found in $SCRIPT_DIR/boot/${NC}"
+if [ ! -f "$SCRIPT_DIR/boot/kernel-kosmos.img" ]; then
+    echo -e "${RED}ERROR: kernel-kosmos.img not found in $SCRIPT_DIR/boot/${NC}"
     echo "       Make sure you extracted the tarball correctly:"
-    echo "       mkdir ~/rf-kernel && tar xzf rf-linux-kernel-*.tar.gz -C ~/rf-kernel"
+    echo "       mkdir ~/kosmos-kernel && tar xzf kosmos-kernel-*.tar.gz -C ~/kosmos-kernel"
     exit 1
 fi
 
@@ -112,8 +112,8 @@ echo "       Backup saved to: $BACKUP_DIR"
 # === Step 2: Install Kernel Image ===
 echo ""
 echo -e "${YELLOW}[2/5] Installing kernel image...${NC}"
-cp "$SCRIPT_DIR/boot/kernel-rflinux.img" "$BOOT_DIR/"
-echo "       Installed kernel-rflinux.img to $BOOT_DIR/"
+cp "$SCRIPT_DIR/boot/kernel-kosmos.img" "$BOOT_DIR/"
+echo "       Installed kernel-kosmos.img to $BOOT_DIR/"
 
 # === Step 3: Install Device Tree Blobs ===
 # DTBs tell the kernel where every piece of hardware lives in memory.
@@ -160,8 +160,8 @@ echo ""
 echo -e "${YELLOW}[5/5] Updating boot configuration...${NC}"
 
 # Check if we've already added our kernel to config.txt
-if grep -q "kernel=kernel-rflinux.img" "$BOOT_DIR/config.txt"; then
-    echo "       config.txt already points to rf-linux kernel"
+if grep -q "kernel=kernel-kosmos.img" "$BOOT_DIR/config.txt"; then
+    echo "       config.txt already points to kosmos kernel"
 else
     # Add our kernel directive
     # We put it in a [pi5] section so it only applies to Pi 5 hardware.
@@ -171,17 +171,17 @@ else
     # Check if [pi5] section exists
     if grep -q "^\[pi5\]" "$BOOT_DIR/config.txt"; then
         # Add our kernel line after the [pi5] section header
-        sed -i '/^\[pi5\]/a kernel=kernel-rflinux.img' "$BOOT_DIR/config.txt"
+        sed -i '/^\[pi5\]/a kernel=kernel-kosmos.img' "$BOOT_DIR/config.txt"
     else
         # Create a [pi5] section with our kernel
         cat >> "$BOOT_DIR/config.txt" <<EOF
 
-# RF-Linux custom kernel
+# KosmOs custom kernel
 [pi5]
-kernel=kernel-rflinux.img
+kernel=kernel-kosmos.img
 EOF
     fi
-    echo "       Updated config.txt to boot rf-linux kernel"
+    echo "       Updated config.txt to boot kosmos kernel"
 fi
 
 # === Verification ===
@@ -191,7 +191,7 @@ echo -e "${GREEN}  INSTALLATION COMPLETE${NC}"
 echo -e "${GREEN}============================================${NC}"
 echo ""
 echo "  Kernel:     $KERNEL_VERSION"
-echo "  Boot image: $BOOT_DIR/kernel-rflinux.img"
+echo "  Boot image: $BOOT_DIR/kernel-kosmos.img"
 echo "  Modules:    /lib/modules/$KERNEL_VERSION/"
 echo "  Backup:     $BACKUP_DIR/"
 echo ""
@@ -205,10 +205,10 @@ echo "    modprobe ax25   # Should load without errors"
 echo ""
 echo -e "  ${YELLOW}TO REVERT if something goes wrong:${NC}"
 echo "    1. Pull the SD card, mount boot partition on another computer"
-echo "    2. Edit config.txt, remove the line: kernel=kernel-rflinux.img"
+echo "    2. Edit config.txt, remove the line: kernel=kernel-kosmos.img"
 echo "    3. Re-insert SD card and boot — stock kernel loads automatically"
 echo ""
 echo -e "  ${YELLOW}Or from a working SSH session:${NC}"
-echo "    sudo sed -i '/kernel=kernel-rflinux.img/d' $BOOT_DIR/config.txt"
+echo "    sudo sed -i '/kernel=kernel-kosmos.img/d' $BOOT_DIR/config.txt"
 echo "    sudo reboot"
 echo ""

@@ -1,4 +1,4 @@
 linux/
-rf-linux-kernel-pkg/
-rf-linux-kernel-*.tar.gz
+kosmos-kernel-pkg/
+kosmos-kernel-*.tar.gz
 *.o

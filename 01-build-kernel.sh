@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# RF-Linux Kernel Build Script for Raspberry Pi 5
+# KosmOs Kernel Build Script for Raspberry Pi 5
 # ============================================================================
 # Run this inside your Debian ARM64 UTM VM.
 #
@@ -30,13 +30,18 @@
 
 set -euo pipefail  # Exit on error, undefined vars, pipe failures
 
+# Where this script and its sibling files (sdr-rt.config, install-kernel.sh,
+# 02-post-install.sh) actually live. Resolved from the script's own path so the
+# repo can be cloned anywhere.
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # === CONFIGURATION ===
 # Change these if you want a different kernel branch or build directory
 KERNEL_BRANCH="rpi-6.12.y"       # Latest Pi LTS branch with RT support
-BUILD_DIR="$HOME/rf-linux"
+BUILD_DIR="$HOME/kosmos"         # scratch workspace: kernel source + artifacts
 KERNEL_DIR="$BUILD_DIR/linux"
 OUTPUT_DIR="$BUILD_DIR/output"
-PACKAGE_DIR="$BUILD_DIR/rf-linux-kernel-pkg"
+PACKAGE_DIR="$BUILD_DIR/kosmos-kernel-pkg"
 
 # Number of parallel build jobs — use all cores
 # This is like setting worker threads on a build server.
@@ -45,7 +50,7 @@ PACKAGE_DIR="$BUILD_DIR/rf-linux-kernel-pkg"
 JOBS=$(nproc)
 
 echo "============================================"
-echo "  RF-Linux Kernel Build for Raspberry Pi 5"
+echo "  KosmOs Kernel Build for Raspberry Pi 5"
 echo "============================================"
 echo "Branch:     $KERNEL_BRANCH"
 echo "Build dir:  $BUILD_DIR"
@@ -107,13 +112,16 @@ make bcm2712_defconfig
 echo ""
 echo "[4/7] Merging SDR/RT config fragment..."
 
-# Copy our fragment into the kernel tree
-FRAGMENT_PATH="$BUILD_DIR/sdr-rt.config"
+# The fragment ships next to this script, so locate it relative to the script
+# itself rather than relative to BUILD_DIR. BUILD_DIR is a scratch workspace
+# (that is where the kernel source gets cloned); it is not where the repo
+# lives. Deriving the path from $HOME/kosmos meant the script only worked if
+# you had copied the repo to exactly that directory, and failed here otherwise.
+FRAGMENT_PATH="$REPO_DIR/sdr-rt.config"
 
 if [ ! -f "$FRAGMENT_PATH" ]; then
     echo "ERROR: Config fragment not found at $FRAGMENT_PATH"
-    echo "       Run this script from the rf-linux build directory,"
-    echo "       and make sure sdr-rt.config is present."
+    echo "       sdr-rt.config should sit next to this script."
     exit 1
 fi
 
@@ -197,7 +205,7 @@ mkdir -p "$PACKAGE_DIR"/{boot,modules}
 # Copy kernel image
 # The Pi 5 bootloader looks for "kernel_2712.img" by default,
 # but we'll use a custom name and point config.txt at it.
-cp arch/arm64/boot/Image "$PACKAGE_DIR/boot/kernel-rflinux.img"
+cp arch/arm64/boot/Image "$PACKAGE_DIR/boot/kernel-kosmos.img"
 
 # Install modules to our package directory
 # INSTALL_MOD_PATH tells make "pretend this is the root filesystem"
@@ -217,9 +225,17 @@ cp System.map "$PACKAGE_DIR/System.map"
 # Store version string
 echo "$KERNEL_VERSION" > "$PACKAGE_DIR/kernel-version"
 
+# Include the Pi-side scripts in the package.
+# Without these the tarball contains only the kernel payload, so the documented
+# next step -- extract, then run install-kernel.sh from the extracted directory
+# -- had nothing to run, and both scripts had to be copied over separately.
+cp "$REPO_DIR/install-kernel.sh" "$PACKAGE_DIR/"
+cp "$REPO_DIR/02-post-install.sh" "$PACKAGE_DIR/"
+chmod +x "$PACKAGE_DIR/install-kernel.sh" "$PACKAGE_DIR/02-post-install.sh"
+
 # Create the tarball
 cd "$BUILD_DIR"
-TARBALL="rf-linux-kernel-${KERNEL_VERSION}.tar.gz"
+TARBALL="kosmos-kernel-${KERNEL_VERSION}.tar.gz"
 tar czf "$TARBALL" -C "$PACKAGE_DIR" .
 
 echo ""
@@ -234,8 +250,13 @@ echo "  Next steps:"
 echo "    1. SCP to your Pi:"
 echo "       scp $BUILD_DIR/$TARBALL pi@<PI_IP>:~/"
 echo ""
-echo "    2. On the Pi, run the install script:"
-echo "       tar xzf $TARBALL -C ~/rf-kernel"
-echo "       sudo bash ~/rf-kernel/install-kernel.sh"
+echo "    2. On the Pi, unpack and install:"
+echo "       mkdir -p ~/kosmos-kernel"
+echo "       tar xzf $TARBALL -C ~/kosmos-kernel"
+echo "       sudo bash ~/kosmos-kernel/install-kernel.sh"
+echo "       sudo reboot"
+echo ""
+echo "    3. After reboot, verify and install the SDR tools:"
+echo "       ~/kosmos-kernel/02-post-install.sh"
 echo ""
 echo "============================================"
