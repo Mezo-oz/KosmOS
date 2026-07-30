@@ -194,6 +194,93 @@ except where noted (see Phase 2c for the independence rule on IceSickle).
 
 ---
 
+## Architecture & Extensibility (adopted 2026-07-30)
+
+*There is no Phase 5 — this is a standing design principle rather than a phase of
+work, so it sits with the other rules rather than at the end of the plan.*
+
+### Openness is architectural, not a feature
+
+KosmOS is open to new satellites because of what it is built from, not because
+anyone added an "extensibility" feature to it:
+
+- **SoapySDR** is a hardware abstraction layer — the radio is swappable
+- **GNU Radio** is a software-defined modem — the waveform is code, not silicon
+- **Linux networking** carries whatever comes out of the other end
+
+Nothing in that chain is specific to any one spacecraft. A new bird is new
+*parameters*, not new plumbing. The openness is emergent; the job is to avoid
+designing it away.
+
+### Satellite profiles — the extension point
+
+The link layer is structured as modular **satellite profiles**: driver-like
+descriptors, one per satellite or constellation.
+
+| Field | What it carries |
+|---|---|
+| Frequency | downlink centre, bandwidth |
+| Modulation | APT (analogue FM), LRPT (QPSK), HRPT, … |
+| Protocol | framing, FEC, CRC |
+| Flowgraph | the GNU Radio graph or SatDump pipeline that decodes it |
+
+**Adding a satellite means writing a profile. The core is untouched.** That is
+the whole claim, and it is the thing that has to keep being true: the day adding
+a bird requires editing the capture path, the abstraction has failed, and the fix
+is the abstraction — not a special case bolted beside it.
+
+Profiles belong in `config/profiles/`, alongside the SDR++ and SatDump configs.
+**Document the extension point when the first profile is written**, so "add a
+satellite" is a known operation rather than tribal knowledge.
+
+**What a profile describes today is reception.** The RTL-SDR is a receiver, so
+the current shape is downlink-only. Transmit is not a software change: it needs
+different hardware (HackRF, PlutoSDR) and, on essentially every band worth using,
+a licence. The profile shape has room for an uplink section — and per the rule
+below, nothing gets written into it until there is hardware to test it against.
+
+### Design rule: extension point, not scaffolding
+
+**Future-proof with a clean abstraction and a documented extension point. Build
+nothing for systems that do not exist.**
+
+No empty "commercial provider" modules. No stub hooks awaiting a partnership. No
+abstract base class with exactly one implementation. This is the same discipline
+that *deleted* `OUTPUT_DIR` from the kernel build script rather than wiring it up
+(see the comment still standing at `kernel/01-build-kernel.sh:60`): dead code
+that looks like readiness is worse than nothing there at all, because it implies
+a capability nobody has tested.
+
+What KosmOS targets is **open or published interfaces**:
+
+- an open-source constellation — published specs, write a profile, done
+- any commercial provider that publishes an SDR-accessible interface
+
+A closed constellation's door is theirs to open. KosmOS stays *ready* — the
+abstraction clean, the extension point documented — not *pre-plumbed*.
+
+### Two different things get called "commercial"
+
+Separated here so they are not conflated later, in either direction.
+
+**Routing KosmOS traffic *through* a commercial terminal — already works,
+trivially.** A Starlink dish, an LTE modem, a hotel Ethernet port: these are
+uplinks. Plug one in and KosmOS uses it like any other network interface. That is
+Linux networking and there is nothing to build. It is also the genuinely useful
+case — a field station backhauling decoded data over whatever link exists.
+
+**Making KosmOS's SDR *be* a commercial terminal — not possible, and not
+future-proofable.** A Starlink user terminal is proprietary phased-array hardware
+running a closed waveform in licensed spectrum. The obstacles are hardware,
+cryptography and law, in that order, and none of them is the kind of thing a
+software abstraction bridges. There is no key that turns an RTL-SDR or a HackRF
+into a Starlink modem, and no amount of architectural readiness changes it.
+
+Writing that down plainly costs nothing now and saves walking it back from a
+README that implied otherwise.
+
+---
+
 ## Proof of Claim: RT Kernel Benchmark (v0.25 — Before the SATCOM Stack)
 
 **The question:** does PREEMPT_RT measurably reduce scheduling latency and dropped
@@ -734,7 +821,7 @@ KosmOS/
 ├── config/
 │   ├── ✅ frequencies.md        # SATCOM frequency reference
 │   ├── ✅ antennas.md           # Antenna selection guide
-│   └── ·  profiles/             # Pre-built SDR++ / SatDump configs
+│   └── ·  profiles/             # Satellite profiles + SDR++ / SatDump configs
 ├── image/
 │   └── ·  build-image.sh        # Automated .img.gz builder
 └── ✅ .gitignore
