@@ -23,13 +23,17 @@ Two Raspberry Pi 5s, with a deliberate and permanent split of roles:
   **The production bridge does not return to pi-server** — this is settled, not
   provisional.
 
-  ⚠️ **Correction 2026-07-30: that migration has not happened yet.** This document
-  previously recorded it as done on 2026-07-29; it was decided then, not executed.
-  The stack is still on pi-server, which is why Gate 0 below exists and why it
-  blocks step 9. The migration is Path B: pi-server is freed by moving the bridge
-  off it, not by swapping SD cards — there is no spare card. Procedure lives in
-  the migration runbook beside the compose file in the `tor-services` project
-  directory, deliberately outside this repo.
+  ✅ **Migrated 2026-07-30**, by Path B — pi-server freed by moving the bridge off
+  it, not by swapping SD cards, since there is no spare card. The identity was
+  preserved: same fingerprint and same obfs4 `cert=`, verified byte-for-byte
+  against a pre-move capture, so previously distributed bridge lines keep working.
+  Watchtower was dropped in the move; altai runs the bridge and snowflake only.
+
+  *(This section previously recorded the migration as done on 2026-07-29. It was
+  decided that day, not executed — corrected earlier on 2026-07-30, and now
+  genuinely true. Procedure and the post-mortem live in the migration runbook
+  beside the compose file in the `tor-services` project directory, deliberately
+  outside this repo.)*
 
 Why the split matters for this project: the RT kernel benchmark needs a box you
 can reboot between kernels at will and reflash if an install goes wrong. A host
@@ -917,8 +921,18 @@ of the repo on the Pi.
    any committed file**, including logs pasted into it. Record only "verified,
    date" here.
 
-   - [ ] gate 0.1 — nothing bridge-related remains on pi-server
-   - [ ] gate 0.2 — bridge verified live on Tor Metrics from altai
+   - [x] **gate 0.1 — met 2026-07-30.** `tor.service` and `tor@default.service`
+     disabled and inactive, no `tor` process, no stack containers, 443/9001
+     unbound. The identity volume and a 43 KB backup are deliberately *kept* as
+     the rollback until the migration has held for a few days.
+   - [x] **gate 0.2 — met 2026-07-30.** The bridge runs on altai under its
+     original identity: `fingerprint` and `pt_state/obfs4_bridgeline.txt` are
+     byte-identical to the pre-move capture, so the `cert=` in every distributed
+     bridge line still works. Tor's ORPort self-test — an external check, a
+     remote relay connecting back — passed, and the server descriptor is
+     publishing. *Outstanding verification, not a blocker: the
+     `bridges.torproject.org/status` dashboard lags hours behind; confirm there
+     before deleting pi-server's rollback copies.*
    - [ ] gate 0.3 — pre-flight below complete
 
    **Pre-flight on pi-server, after gate 0** — add to the checks below:
@@ -926,20 +940,49 @@ of the repo on the Pi.
    second kernel's modules land beside the stock set, and note that
    `sudo systemctl enable --now docker` may need undoing if the migration
    disabled it on this box.
-   - **Check `/boot/firmware/config.txt` for a stale custom-kernel block.** An
-     RF-Linux-era block (`# RF-Linux custom kernel` / `kernel=kernel-rflinux.img`)
-     was found on **altai** during the earlier investigation; whether pi-server has
-     one is **unverified** — check it directly in the pre-flight. If present, the
-     new installer greps for `^os_prefix=kosmos/`, will not see the old-named block,
-     and would append a second one, leaving two conflicting `kernel=` directives;
-     the revert one-liner will not match the old name either. Remove any such block
-     by hand first and delete the orphaned image.
-   - **Config-A baseline is already right: stock `6.12.62+rpt-rpi-2712`.** Boot
-     that for config A, not a newer stock kernel, so the RT patch is the only
-     difference — no pinning needed, it is installed.
-   - **Set the governor to performance on both kernels** before any run, or record
-     that the figures include ondemand ramp latency. Ship this as the
-     performance-governor systemd unit (part of the pre-flight).
+   **Run 2026-07-30. Results below.**
+
+   - [x] **`config.txt` is clean.** No RF-Linux-era block, no `kernel=`, no
+     `os_prefix` — 51 lines, sections `[cm4]`, `[cm5]`, `[all]` only. The stale
+     block was **altai's**, and pi-server does not have one, so the
+     two-conflicting-`kernel=`-directives hazard does not apply here. The
+     installer's `^os_prefix=kosmos/` grep will behave as designed.
+   - [x] **`/lib/modules` inventoried** — four sets already present:
+     `6.12.47+rpt-rpi-2712`, `6.12.47+rpt-rpi-v8`, `6.12.62+rpt-rpi-2712`,
+     `6.12.62+rpt-rpi-v8`. KosmOS adds a fifth in its own versioned directory.
+   - [x] **Config-A baseline confirmed**: running `6.12.62+rpt-rpi-2712`,
+     `#1 SMP PREEMPT Debian 1:6.12.62-1+rpt1`. Exactly the ROADMAP's expectation,
+     so no pinning is needed for the baseline.
+   - [x] **Governor unit installed and working** — all four cores read
+     `performance`, `kosmos-governor.service` enabled and active.
+     ⏳ *Reboot persistence is the one thing not yet proven, and it is the whole
+     point of the unit. Confirm before any benchmark run.*
+     - **Refinement to the earlier finding:** `ondemand.service` **does not exist**
+       on pi-server, so the installer's masking step was a no-op. The `ondemand`
+       governor here comes from the stock kernel's own default, not from a Debian
+       service overriding it at boot. The ROADMAP previously generalised altai's
+       cause to both boxes; on this one there is nothing to mask, only a default
+       to override.
+   - [x] **KosmOS cloned** to `~/KosmOS` on pi-server.
+   - [x] **`/boot/firmware`: 445 MB free of 510 MB** — ample for a second kernel,
+     its DTBs and overlays.
+
+   ⚠️ **Two risks found for the build itself, neither previously recorded:**
+
+   - **Disk: 22 GB free on `/`, against the README's stated 40 GB requirement**
+     for a build host. A shallow kernel clone plus a full object tree with modules
+     may or may not fit. Measure before committing to a 90-minute build, and if it
+     is tight the cheapest large saving is turning off `CONFIG_DEBUG_INFO`, which
+     dominates object-tree size. Alternative: build on another ARM64 host and copy
+     the tarball over — the build host does not have to be the bench box.
+   - **RAM: 4 GB with `JOBS=$(nproc)` = 4.** The README itself warns ~1.5 GB per
+     job and says drop to 2 if the OOM killer fires. This is exactly that edge, so
+     expect to need `JOBS=2` and do not read an OOM kill as a broken script.
+
+   - **Build dependencies are mostly absent** (`bc`, `bison`, `flex`,
+     `libssl-dev`, `libncurses-dev`, `libelf-dev`, `dwarves`). Not a blocker —
+     `01-build-kernel.sh` installs them in its step 1 — but the build starts with
+     an apt run rather than compiling immediately.
 10. Order the RTL-SDR Blog v4 + dipole antenna kit (if not already)
 11. ~~Build `03-satcom-stack.sh` — pinned from line one~~ ✅ **written and
     linted**, pinned from line one. Still needs its first run on pi-server;
