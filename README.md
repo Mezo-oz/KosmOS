@@ -271,9 +271,15 @@ stay in English regardless.
 ## Status and caveats
 
 - The kernel build, install and rollback paths are the mature part of this repo.
-- `userspace/02c-sdr-userspace.sh` builds several tools from `git clone` of upstream
-  `HEAD` with no pinned revisions, so an upstream change can break it. If a build step
-  fails, it is worth checking that project's recent commits.
+- `userspace/02c-sdr-userspace.sh` pins every project it builds to an exact commit
+  and verifies the checkout against that commit, so an upstream change cannot alter
+  what gets built. If a pin ever fails to verify, that is a moved tag or a
+  force-push upstream — read the history and bump the tag and SHA together rather
+  than removing the check. Revisions installed are appended to
+  `/usr/local/share/kosmos/build-manifest.txt`.
+- `kernel/01-build-kernel.sh` is *not* pinned: it clones `raspberrypi/linux` at
+  branch `rpi-6.12.y`, whose tip moves. Two kernel builds weeks apart are not the
+  same kernel.
 - `predict` is compiled via its own curses installer rather than a standard `make
   install`, so it needs `libncurses-dev` present.
 - `gpredict` is skipped automatically on a headless system.

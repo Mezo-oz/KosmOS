@@ -80,12 +80,13 @@ Three pillars separate this from a toy:
    expeditions needing current satellite weather with zero internet — want the
    *output* of the tools, not 200 tools.
 3. **Reproducible, auditable build** — scripts and pinned versions, not an
-   opaque golden-image ISO. ⚠️ *This is currently a commitment, not a fact:
-   02-post-install.sh clones four projects at unpinned upstream HEAD, so two
-   builds a month apart won't match. Pinning is pulled forward from Phase 4a —
-   it's load-bearing for this positioning. Every new build script (starting
-   with 03-satcom-stack.sh) pins from line one; retrofit pins into
-   02-post-install.sh.*
+   opaque golden-image ISO. ✅ *Now a fact for the userspace stack:
+   `02c-sdr-userspace.sh` pins all four projects to exact commits and verifies
+   the checkout against the pin, hard-failing on a mismatch rather than building
+   whatever a moved tag points at. Every new build script pins from line one.
+   What is built gets recorded to `/usr/local/share/kosmos/build-manifest.txt`,
+   so a box can be asked which revision a binary came from. Still open: the
+   kernel branch itself (`rpi-6.12.y`) is a moving target — see Phase 4a.*
 
 ---
 
@@ -455,9 +456,19 @@ appliance. Phases 1–2 build the parts; Phase 3 makes them run themselves.*
   - Produces a flashable `.img.gz` file
   - Anyone can download and flash to SD card
   - Like building a Docker image but for the whole OS
-- [x] **Version pinning** — *pulled forward; see Pillar 3. Applies from
-  03-satcom-stack.sh onward, plus retrofit of 02-post-install.sh*
-- [ ] **Checksum verification** — SHA256 for all downloads
+- [x] **Version pinning** — *pulled forward; see Pillar 3. `02c-sdr-userspace.sh`
+  and `03-satcom-stack.sh` both pin every source they build.*
+- [x] **Checksum verification** — every git source is verified against its pinned
+  commit after checkout, which is a content check over the whole tree. apt
+  packages are verified by apt against the archive's signed Release file. No
+  script fetches a loose file, so there is no artifact left needing a standalone
+  SHA-256 digest; if one is ever added, the digest goes in beside its URL.
+- [ ] **Pin the kernel source too** — `01-build-kernel.sh` still clones
+  `raspberrypi/linux` at `--branch rpi-6.12.y`, whose tip moves. Two kernel
+  builds a month apart are therefore not the same kernel, which matters for a
+  published benchmark. Deliberately left alone for now: changing it changes which
+  kernel the v0.25 A/B measures, and that decision belongs with the rebuild at
+  step 9, not before it.
 
 #### 4b. Configuration Management
 - [ ] **First-boot setup wizard** (CLI-based)
@@ -655,9 +666,12 @@ as the `git mv`.
   `install-kernel.sh` (366) and `01-build-kernel.sh` (371) are still the two
   files near the cap; neither does more than one job, so neither is a natural
   split yet.
-- **Retrofit version pins into `02-post-install.sh`** — four projects still
-  clone unpinned upstream `HEAD`, which is what keeps Pillar 3 a commitment
-  rather than a fact.
+- ~~**Retrofit version pins into `02-post-install.sh`**~~ ✅ **done.** All four
+  projects in `02c-sdr-userspace.sh` are pinned to exact commits, verified after
+  checkout, and recorded to a build manifest. Pins captured 2026-07-29:
+  rtl-sdr-blog `v1.3.6`, rtl_433 `25.12`, dump1090 `v11.1`, predict at its 2018
+  tip (upstream has never tagged). Each pin was fetch-tested against the live
+  upstream, and the mismatch path was tested with a bad SHA.
 
 ---
 
