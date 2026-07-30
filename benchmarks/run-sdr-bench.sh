@@ -30,6 +30,10 @@
 # linted and reviewed but never executed against hardware. The rtl_test output
 # parsing in particular is written against its documented output format and
 # should be checked on the first real run — use --quick first.
+#
+# SHARED CODE: the governor, config-detection and load-generation blocks below are
+# duplicated in run-latency-bench.sh. Deliberately not extracted — see the
+# extraction rule in ROADMAP.md for the trigger and the shape it must take.
 # ============================================================================
 
 set -euo pipefail

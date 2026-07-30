@@ -27,17 +27,11 @@
 #   number, and everything else gets the groups.
 #
 # WHY CATALOGUE NUMBERS FOR THE PREDICT SET:
-#   Because the obvious group query does not work. GROUP=noaa is not a valid
-#   CelesTrak group — it answers HTTP 200 with the body
-#   'Invalid query: "GROUP=noaa&FORMAT=tle" (GROUP=noaa not found)', which is 61
-#   bytes that a plain download writes to disk as noaa.tle and reports as
-#   success. And GROUP=weather, which is valid, does not contain NOAA 15, 18 or
-#   19 at all — only the JPSS birds, NOAA 20 and 21. The APT satellites this
-#   project targets first are reachable only by catalogue number. Verified
-#   against the live API 2026-07-29.
-#
-#   That is also why every download here is validated before it is installed:
-#   the failure mode is a 200 with prose in it, not an error code.
+#   The obvious group query does not work. GROUP=noaa is not a valid CelesTrak
+#   group and answers HTTP 200 with an error string in the body; GROUP=weather is
+#   valid but holds no NOAA 15/18/19. The README has both in full. It is also why
+#   every download is validated before install: the failure mode here is a 200
+#   with prose in it, not an error code.
 #
 # USAGE:
 #   ./tle-updater.sh                 update both destinations
@@ -52,6 +46,11 @@
 #
 # Exits non-zero if any source failed to fetch or failed validation, so a cron
 # job or systemd timer reports it rather than leaving stale elements in place.
+#
+# SIZE: this file runs close to the project's 400-line cap. Read the extraction
+# rule in ROADMAP.md before adding to it — lose lines here first, and if that is
+# not possible, what comes out must be an executable helper returning data on
+# stdout, never a sourced library.
 # ============================================================================
 
 set -euo pipefail
@@ -111,7 +110,12 @@ while [ "$#" -gt 0 ]; do
         --dry-run)      DRY_RUN=1; shift ;;
         --predict-only) PREDICT_ONLY=1; shift ;;
         -h|--help)
-            sed -n '2,60p' "$0" | sed 's/^# \{0,1\}//'
+            # Print the header block: comment lines from line 3 -- past the
+            # shebang and the SPDX line, which every script in this repo carries
+            # in that order -- until the first line that is not a comment.
+            # Self-maintaining: a fixed line range goes wrong the moment the
+            # header is edited, and this header has already been edited twice.
+            sed -n '3,$p' "$0" | sed -n '/^#/!q;p' | sed 's/^# \{0,1\}//'
             exit 0
             ;;
         *)

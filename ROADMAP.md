@@ -131,6 +131,50 @@ shell/Python:
    deliberate and named LIKE_THIS (rule 6)
 7. **Pin every version, checksum every download** — Pillar 3's mechanics
 
+### Extraction rule (decided 2026-07-30)
+
+Several scripts duplicate helper code on purpose. **Do not extract it on sight.**
+
+Known duplication, all deliberate:
+
+| Duplicated | Copies in | Size |
+|---|---|---|
+| governor handling, config detection, load generation | `run-latency-bench.sh`, `run-sdr-bench.sh` | ~80 lines |
+| `clone_pinned` | `02c-sdr-userspace.sh`, `03b-satdump.sh`, `03c-sdrpp.sh` | ~40 lines |
+
+**Trigger — the only one.** Extract when a file must grow past the 400-line cap
+and cannot lose the lines elsewhere. Nothing else counts: not tidiness, not the
+copy count, not "it'll be needed later". That is the same trigger that split
+`package-kernel.sh` out of `01-build-kernel.sh`, where it produced a genuine
+second benefit — repackaging without rebuilding — because the split followed a
+real seam rather than a wish to deduplicate.
+
+Duplication that is under the cap and has not caused a bug is cheaper than the
+coupling that removes it. Two harnesses that each read as one file beat two that
+each need a third file open to follow.
+
+**Shape, when the trigger fires.** An **executable helper** the callers invoke as
+a subprocess. **Never a sourced library.** Sourcing needs a
+`# shellcheck source=` directive *and* `--external-sources` to stay clean; the CI
+gate runs plain `shellcheck -S style` with no flags and no `disable=` directives
+anywhere in the tree, and it stays that way. A helper invoked as a command is
+analysed as its own file, and the callers stay clean without a single flag.
+
+**Interface.** A helper returns data on **stdout** and status via its exit code.
+It must not try to set variables in its caller — as a subprocess it cannot, and
+that constraint is the point rather than a limitation to work around. Config
+detection returns the configuration letter on stdout:
+
+```bash
+CONFIG=$(./bench-detect-config.sh)      # prints A, B or C; non-zero if unsure
+```
+
+**Current headroom** (2026-07-30): `tle-updater.sh` 393, `run-latency-bench.sh`
+392, `install-kernel.sh` 367, `run-sdr-bench.sh` 359. The first two are the ones
+that will trip the trigger first, and when either does, the rule above applies to
+whatever is being added — including if the growth is in `tle-updater.sh`, which
+shares nothing with the harnesses and would extract something else entirely.
+
 **Custom GNU Radio blocks — the rule.** Write a custom block only when (a) the
 catalog has no part — a protocol or format no existing block handles — or
 (b) we need a *gauge in the pipe* — instrumentation measuring the stream

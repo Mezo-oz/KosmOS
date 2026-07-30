@@ -39,6 +39,10 @@
 #   restored on exit. The kernel default does not survive Pi OS boot — ondemand
 #   was observed on hardware — and its frequency-ramp delay would otherwise land
 #   on whichever kernel happened to be measured cold. Also in BENCHMARKS.md.
+#
+# SHARED CODE: the governor, config-detection and load-generation blocks below are
+#   duplicated in run-sdr-bench.sh. Deliberately not extracted — see the
+#   extraction rule in ROADMAP.md for the trigger and the shape it must take.
 # ============================================================================
 
 set -euo pipefail
