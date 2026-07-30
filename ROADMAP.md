@@ -592,8 +592,12 @@ v0.1   ✅ DONE    Custom RT kernel boots on Pi 5
 v0.2   ✅ DONE    SDR userspace tools installed (rtl_433, dump1090, predict)
 v0.25  ......    RT kernel benchmark published (proof of claim — BEFORE the
                  SATCOM stack; Test 1 needs no dongle, runnable this week)
+                 Harnesses + methodology written; no numbers yet. Blocked on the
+                 step-9 rebuild, which is blocked on a human.
 v0.3   ......    SatDump + GNU Radio + SDR++ (first satellite decode, pinned)
                  + gr-kosmos discontinuity probe (first custom block)
+                 Install scripts written and pinned; no build has run.
+                 Probe is a skeleton with no detection logic.
 v0.4   ......    Automated capture pipeline (scheduled sat passes)
 v0.5   ......    Protocol decoders (Iridium, AIS, APRS/direwolf)
                  + gr-satellites upstream PR; revisit IceSickle decoder
@@ -606,53 +610,75 @@ v1.0   ......    Full release — documented, tested, flashable image
 
 ---
 
-## Repository Structure (Target)
+## Repository Structure
+
+`✅` exists as of the 2026-07-30 overnight branch, `·` still to build.
 
 ```
 KosmOS/
-├── README.md                    # Project overview and quick start
-├── ROADMAP.md                   # This document (must be tracked in the repo)
-├── .gitattributes               # Keep — prevents CRLF breaking shebangs
+├── ✅ README.md                 # Project overview and quick start
+├── ✅ ROADMAP.md                # This document (must be tracked in the repo)
+├── ✅ LICENSE                   # GPLv3 — the kernel stays GPL-2.0 upstream
+├── ✅ .gitattributes            # Keep — prevents CRLF breaking shebangs
+├── .github/workflows/
+│   └── ✅ shellcheck.yml        # CI gate: shellcheck at zero, pinned version
 ├── kernel/
-│   ├── 01-build-kernel.sh       # Kernel build script
-│   ├── sdr-rt.config            # Kernel config fragment
-│   └── install-kernel.sh        # Pi kernel installer
+│   ├── ✅ 01-build-kernel.sh    # Kernel build script
+│   ├── ✅ sdr-rt.config         # Kernel config fragment
+│   └── ✅ install-kernel.sh     # Pi kernel installer
 ├── benchmarks/
-│   ├── BENCHMARKS.md            # RT vs stock kernel results (proof of claim)
-│   ├── run-latency-bench.sh     # cyclictest suite (idle / CPU load / IO load)
-│   └── run-sdr-bench.sh         # rtl_test dropped-sample sweep
+│   ├── ✅ BENCHMARKS.md         # RT vs stock results — methodology done, tables empty
+│   ├── ✅ run-latency-bench.sh  # cyclictest: A/B/C x idle/CPU/IO x whole/pinned
+│   └── ✅ run-sdr-bench.sh      # rtl_test dropped-sample sweep
 ├── gr-kosmos/                   # Custom GNU Radio blocks (OOT module)
-│   └── (discontinuity probe; future blocks per the custom-block rule)
+│   ├── ✅ README.md             # Includes why there is no CMakeLists.txt
+│   ├── ✅ install.sh            # Development install (.pth + GRC yml)
+│   ├── ✅ grc/                  # GRC block definitions
+│   └── ✅ python/kosmos/        # discontinuity probe — skeleton, no logic yet
 ├── userspace/
-│   ├── 02-post-install.sh       # SDR tools + locale setup
-│   ├── 03-satcom-stack.sh       # SatDump, GNU Radio, SDR++ (Phase 1)
-│   └── 04-protocol-decoders.sh  # Iridium, AIS, direwolf (Phase 2)
+│   ├── ✅ 02-post-install.sh    # Sequencer over 02a-02d
+│   ├── ✅ 02a-verify-kernel.sh  # Kernel verification, read-only
+│   ├── ✅ 02b-bench-tools.sh    # rt-tests + stress-ng
+│   ├── ✅ 02c-sdr-userspace.sh  # librtlsdr, rtl_433, dump1090, predict — pinned
+│   ├── ✅ 02d-locale-ru.sh      # Optional Russian locale
+│   ├── ✅ 03-satcom-stack.sh    # Sequencer over 03a-03c
+│   ├── ✅ 03a-gnuradio-stack.sh # GNU Radio + gr-osmosdr + SoapySDR (apt, pinned)
+│   ├── ✅ 03b-satdump.sh        # SatDump (source, pinned)
+│   ├── ✅ 03c-sdrpp.sh          # SDR++ (source, pinned)
+│   └── ·  04-protocol-decoders.sh  # Iridium, AIS, direwolf (Phase 2)
 ├── automation/
-│   ├── sat-pass-scheduler.sh    # Automated satellite capture
-│   ├── rtl433-service.conf      # systemd unit for always-on RF monitoring
-│   ├── tle-updater.sh           # Cron script for TLE refresh
-│   └── adsb-feeder.sh           # dump1090 → FlightAware feed
-├── field/
-│   ├── wifi-ap-setup.sh         # hostapd + dnsmasq config
-│   ├── wireguard-setup.sh       # VPN for remote access
-│   ├── tor-bridge-setup.sh      # Optional Tor bridge module (off by default)
-│   └── web-dashboard/           # Browser-based status panel
+│   ├── ✅ tle-updater.sh        # TLE refresh; writes ~/.predict/predict.tle
+│   ├── ✅ kosmos-governor.service  # Pins the CPU governor at boot
+│   ├── ✅ kosmos-set-governor.sh   # The governor write itself
+│   ├── ✅ install-governor.sh   # Installs the unit; masks ondemand.service
+│   ├── ·  sat-pass-scheduler.sh # Automated satellite capture
+│   ├── ·  rtl433-service.conf   # systemd unit for always-on RF monitoring
+│   └── ·  adsb-feeder.sh        # dump1090 → FlightAware feed
+├── field/                       # Phase 3c — nothing built yet
+│   ├── ·  wifi-ap-setup.sh      # hostapd + dnsmasq config
+│   ├── ·  wireguard-setup.sh    # VPN for remote access
+│   ├── ·  tor-bridge-setup.sh   # Optional Tor bridge module (off by default)
+│   └── ·  web-dashboard/        # Browser-based status panel
 ├── config/
-│   ├── frequencies.md           # SATCOM frequency reference
-│   ├── antennas.md              # Antenna selection guide
-│   └── profiles/                # Pre-built SDR++ / SatDump configs
+│   ├── ✅ frequencies.md        # SATCOM frequency reference
+│   ├── ✅ antennas.md           # Antenna selection guide
+│   └── ·  profiles/             # Pre-built SDR++ / SatDump configs
 ├── image/
-│   └── build-image.sh           # Automated .img.gz builder
-└── .gitignore
+│   └── ·  build-image.sh        # Automated .img.gz builder
+└── ✅ .gitignore
 
 (NOT in this repo: gr-icesickle — lives with the IceSickle project; runs ON
 KosmOS, doesn't ship IN it.)
 ```
 
-**Migration note:** the reorganization splits install-kernel.sh (→ kernel/) and
-02-post-install.sh (→ userspace/) — the packaging step copies both from
-$REPO_DIR and will break silently if paths aren't updated in the SAME commit
-as the `git mv`.
+**Packaging note:** `01-build-kernel.sh` copies the Pi-side scripts into the kernel
+tarball from two different directories, and hard-fails on any that are missing.
+That list has to be updated in the same commit as any rename or split under
+`userspace/` — a tarball missing one of them looks complete and fails on the Pi.
+It currently carries `install-kernel.sh` and the whole `02` set. The `03` set,
+`benchmarks/`, `automation/` and `gr-kosmos/` are deliberately **not** packaged:
+none of them are needed to get the kernel running, and they are run from a clone
+of the repo on the Pi.
 
 ---
 

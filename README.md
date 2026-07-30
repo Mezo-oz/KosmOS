@@ -60,13 +60,36 @@ Expect 45–90 minutes for a full kernel build on four cores.
 | `userspace/02c-sdr-userspace.sh` | Pi | Builds librtlsdr, rtl_433, dump1090, predict |
 | `userspace/02d-locale-ru.sh` | Pi | Optional Russian locale (personal preference) |
 
-Every Pi-side script is copied into the kernel tarball by the build, so they
-arrive on the Pi alongside the kernel payload — you do not transfer them separately.
-`ROADMAP.md` holds the project vision, phase plan and target layout.
+The `02` set is copied into the kernel tarball by the build, so it arrives on the
+Pi alongside the kernel payload — you do not transfer it separately.
 
 `02a`–`02d` each run standalone. `02-post-install.sh` exists so that one command
 still does the whole sequence, and because that is the name the build packages and
 the docs have always pointed at.
+
+Everything below is run from a clone of this repository on the Pi. None of it is
+in the kernel tarball, because none of it is needed to get the kernel running.
+
+| File | Runs on | Purpose |
+|---|---|---|
+| `userspace/03-satcom-stack.sh` | Pi | Sequencer for the three SATCOM jobs below |
+| `userspace/03a-gnuradio-stack.sh` | Pi | GNU Radio, gr-osmosdr, SoapySDR — apt, pinned |
+| `userspace/03b-satdump.sh` | Pi | SatDump from source, pinned to a release |
+| `userspace/03c-sdrpp.sh` | Pi | SDR++ from source, pinned to a commit |
+| `benchmarks/run-latency-bench.sh` | Pi | Test 1 — `cyclictest` A/B/C. No SDR hardware needed |
+| `benchmarks/run-sdr-bench.sh` | Pi | Test 2 — `rtl_test` sample-loss sweep. Needs the dongle |
+| `benchmarks/BENCHMARKS.md` | — | Methodology and results for the RT proof of claim |
+| `automation/tle-updater.sh` | Pi | Refreshes orbital elements; writes the file `predict` reads |
+| `automation/install-governor.sh` | Pi | Installs the boot-time performance-governor unit |
+| `automation/kosmos-governor.service` | Pi | The unit itself |
+| `automation/kosmos-set-governor.sh` | Pi | The governor write, installed to `/usr/local/sbin` |
+| `gr-kosmos/` | Pi | Out-of-tree GNU Radio blocks. Scaffold — see its README |
+| `config/frequencies.md` | — | Frequency cheatsheet |
+| `config/antennas.md` | — | Which antenna for which mission |
+
+`ROADMAP.md` holds the project vision, phase plan and target layout.
+`.github/workflows/shellcheck.yml` gates every shell script at zero shellcheck
+findings on push and pull request.
 
 ## Usage
 
