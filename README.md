@@ -330,5 +330,49 @@ against the mod-10 checksum each TLE line carries, and writes
 
 ## License
 
-No license has been declared yet. Until one is added, default copyright applies and
-the code is not licensed for reuse.
+KosmOS's own code — every script in this repository, the config fragment, and the
+documentation — is licensed under the **GNU General Public License, version 3 or
+later**. The full text is in [`LICENSE`](LICENSE).
+
+```
+Copyright (C) 2026 the KosmOS authors
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+```
+
+### The kernel is not covered by this
+
+**`raspberrypi/linux` is GPL-2.0-only, and stays that way.** Nothing here changes
+that, and nothing here could.
+
+KosmOS ships no kernel source. What it ships is a build recipe: `01-build-kernel.sh`
+clones the Raspberry Pi kernel from upstream, merges `sdr-rt.config` over
+`bcm2712_defconfig`, and compiles it. The kernel you end up with is upstream's
+code under upstream's licence — GPL-2.0-only, plus the syscall exception — and if
+you redistribute that binary, the kernel's terms are the ones that apply to it,
+including the obligation to offer the corresponding source.
+
+So there are two licences in play and they cover different things:
+
+| What | Licence | Whose code |
+|---|---|---|
+| Scripts, docs, `gr-kosmos/` | GPL-3.0-or-later | KosmOS |
+| The kernel that gets built | GPL-2.0-only (upstream) | Raspberry Pi / Linux |
+| Everything `02c`/`03` install | each project's own terms | upstream |
+
+GPL-2.0-only and GPL-3.0 are not compatible with each other, which matters if you
+ever combine code rather than just invoke it. Nothing in this repository does:
+these scripts drive the kernel build as a separate program, and the config
+fragment is an *input* to that build, not part of the resulting work.
+
+The tools the userspace scripts install keep their own licences. `02c` and `03`
+build from upstream sources and change none of them; the pinned revision of each
+is recorded in `/usr/local/share/kosmos/build-manifest.txt`, which is also where
+to look when you need to know exactly whose code is on the box.
