@@ -130,8 +130,11 @@ the honest list.
   written against its documented format — **use `--quick` first**, both harnesses
   have it, before committing to a multi-hour sweep.
 - Nothing in `gr-kosmos` has run under GNU Radio.
-- The CI workflow has never run on GitHub. Pushing this branch is what tests it,
-  which is deliberate: the branch is the cheap place to find out.
+
+**Verified after the push:** the CI workflow ran on this branch and passed. Run
+[30517497558](https://github.com/Mezo-oz/KosmOS/actions/runs/30517497558) — pinned
+shellcheck 0.10.0 installed against its SHA-256, 17 scripts checked, zero
+findings, and all three side gates green.
 
 ---
 
@@ -255,8 +258,7 @@ can delete alone. Only the shellcheck one was asked for.
 
 ## Recommended order when you pick this up
 
-1. Check that CI went green on this branch — it has never run.
-2. Skim `git diff main...overnight-20260729` for the two doc files and the
+1. Skim `git diff main...overnight-20260729` for the two doc files and the
    licensing section, which are the least mechanical changes.
 3. Merge or cherry-pick. The split (commit 1) and the pins (commit 2) are the two
    that change existing behaviour; the rest is additive.
