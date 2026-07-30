@@ -1,6 +1,12 @@
 # Overnight session report — 2026-07-29 → 2026-07-30
 
-Branch: **`overnight-20260729`**, 12 commits, not merged.
+> **Follow-up 2026-07-30: all six review decisions are applied.** See
+> [Decisions applied](#decisions-applied) at the end. The "Blocked on you" and
+> "Decisions I made that you may want to reverse" sections below are the
+> *original* overnight state, kept as written; where a decision has since settled
+> one of them, it is marked ✅ there and detailed at the end.
+
+Branch: **`overnight-20260729`**, 18 commits, not merged.
 `main` untouched. Nothing was run on pi-server or altai. No hardware, no secrets,
 no router, no kernel build, no Tor bridge migration, no step 9.
 
@@ -31,10 +37,22 @@ else here, read **"Three real bugs found"** and **"Blocked on you"**.
 | 9 | `471d9bd` | `gr-kosmos` scaffold and the probe skeleton |
 | 10 | `a1902de` | `config/frequencies.md` and `config/antennas.md` |
 | 11 | `33cb463` | README contents table and ROADMAP layout brought in line with the tree |
-| 12 | *(this)* | This report |
+| 12 | `c856e69` | This report |
+| 13 | `a04dc57` | Record the CI result once it had actually run |
 
-All ten requested items are done. **shellcheck 0.10.0 clean at zero across all 17
-scripts, including `-S style`.** Longest script is 394 lines, under the 400 cap.
+Then, applying the 2026-07-30 review decisions:
+
+| | Commit | |
+|---|---|---|
+| 14 | `cab1755` | Verify a `CATNR` response is the satellite that was asked for |
+| 15 | `878f9c8` | Split packaging out of the build; record the source commit |
+| 16 | `18dfe62` | Record three decisions from the review |
+| 17 | `4baa55a` | SPDX headers throughout; `sdr-rt.config` as GPL-2.0-only |
+| 18 | *(this)* | Report follow-up |
+
+All ten original items are done, and all six review decisions are applied.
+**shellcheck 0.10.0 clean at zero across all 18 scripts, including `-S style`.**
+Longest script is 393 lines, under the 400 cap.
 
 ---
 
@@ -143,23 +161,23 @@ findings, and all three side gates green.
 Nothing here was attempted. Each is behind one of the prohibitions, or is a
 decision that is yours.
 
+0. **Gate 0 — get the bridge off pi-server and confirm it live from altai on Tor
+   Metrics.** Ahead of everything else on this list; see
+   [Decisions applied](#decisions-applied). Needs the fingerprint, so it is yours
+   by definition.
 1. **Step 9 — the kernel rebuild, reinstall and benchmark.** Off limits, and it is
-   the critical path for v0.25. The pre-flight in the ROADMAP still applies, plus
+   the critical path for v0.25. Gate 0 first, then the ROADMAP pre-flight, plus
    one addition: `sudo bash automation/install-governor.sh` and confirm
-   `performance` survives a reboot *before* generating any numbers.
+   `performance` survives a reboot *before* generating any numbers. Set
+   `KERNEL_COMMIT` at that rebuild and copy the SHA into `BENCHMARKS.md`.
 2. **First run of `03a`/`03b`/`03c` on pi-server.** Long builds, untested.
    `03a` first — the other two check for its output.
 3. **Installing the governor unit.** It masks `ondemand.service`, which is
    service-affecting. Reversible with `--uninstall`.
 4. **Putting `tle-updater.sh` on a timer.** Cron line is in its header.
 5. **The RTL-SDR v4 order**, which gates Test 2 and Test 3 entirely.
-6. **Two licensing decisions I deliberately did not make for you:**
-   - whether to also offer `kernel/sdr-rt.config` under GPL-2.0, so it can be used
-     alongside kernel sources with no compatibility question at all. I think you
-     should, but it changes licensing terms and that is yours.
-   - whether to add `SPDX-License-Identifier` headers per file. Normal practice; 17
-     files; not done because it pairs with the decision above.
-   - the copyright line reads "the KosmOS authors" rather than your name.
+6. ✅ **Two licensing decisions I deliberately did not make for you** — both
+   settled, see [Decisions applied](#decisions-applied).
 
 ---
 
@@ -178,13 +196,10 @@ Reverse it if a decoder ever needs something Debian's build lacks.
 split turned into. One file would have blown the 400-line cap, and these are
 hour-scale builds you will want to run one at a time.
 
-**The benchmark runs pinned *and* unpinned affinity in every configuration.** This
-extends the ROADMAP's method, which pins only in config C. Pinning only there is
-necessary but not sufficient: comparing a pinned run in C against an unpinned run
-in B compares two different experiments and credits the affinity change to
-dynticks. So `B − A` is read off the whole-machine rows and `C − B` off the pinned
-rows. Six runs per configuration, ~35 minutes. Trim it if that is too slow, but
-then only report `B − A`.
+✅ **The benchmark runs pinned *and* unpinned affinity in every configuration.**
+Kept, and now recorded as settled in the ROADMAP, `BENCHMARKS.md` and the script
+header — explicitly not to be traded away for runtime. See
+[Decisions applied](#decisions-applied).
 
 **`taskset` is paired with `-a 1-3 -t 3`, not `-S`.** Not redundant: `-S` derives
 one thread per *online* CPU and pins thread 0 to CPU 0, which is outside the
@@ -247,36 +262,128 @@ can delete alone. Only the shellcheck one was asked for.
   branch head, which is unusual. `clone_pinned` fetches the commit directly so it
   works either way, but it is worth a glance at upstream's branching before
   trusting `v11.1` as *the* release.
-- **`benchmarks/run-latency-bench.sh` is 394 lines**, six under the cap. The two
+- **File-size headroom, still the standing pressure.** `tle-updater.sh` is at 393
+  and `run-latency-bench.sh` at 392 — the SPDX pass cost every script a line, and
+  the build script already had to be split to stay legal. The two benchmark
   harnesses duplicate ~80 lines of governor handling, config detection and load
-  generation. That is the obvious extraction if either grows — but it has to be an
-  *executable helper*, not a sourced library, or shellcheck needs
-  `--external-sources` and the tree stops being clean at zero without flags.
-  Same reason `clone_pinned` is duplicated across `02c`, `03b` and `03c`.
+  generation; that is the obvious extraction when either next grows. It has to be
+  an *executable helper*, not a sourced library, or shellcheck needs
+  `--external-sources` and the tree stops being clean at zero without flags. Same
+  reason `clone_pinned` is duplicated across `02c`, `03b` and `03c`.
 
 ---
 
 ## Recommended order when you pick this up
 
-1. Skim `git diff main...overnight-20260729` for the two doc files and the
-   licensing section, which are the least mechanical changes.
-3. Merge or cherry-pick. The split (commit 1) and the pins (commit 2) are the two
-   that change existing behaviour; the rest is additive.
+1. Skim `git diff main...overnight-20260729`. The doc files and the licensing
+   section are the least mechanical changes; the SPDX commit is 32 files of one
+   line each and can be read in a minute.
+2. Merge or cherry-pick. Four commits change existing behaviour — the `02` split,
+   the pins, the packaging split, and the licensing headers. The rest is additive.
+3. **Gate 0**: bridge off pi-server, verified live from altai on Tor Metrics.
 4. On pi-server: `install-governor.sh`, reboot, confirm `performance` sticks.
-5. `run-latency-bench.sh --quick` to prove the harness, then the step-9 rebuild,
-   then the real A/B/C.
+5. `run-latency-bench.sh --quick` to prove the harness, then the step-9 rebuild
+   — setting `KERNEL_COMMIT` and copying the SHA into `BENCHMARKS.md` — then the
+   real A/B/C.
 6. `03a` → `03b` → `03c` when there is an evening to spare.
 
 ---
 
 ## One thing I would flag unprompted
 
-`kernel/01-build-kernel.sh` still clones `raspberrypi/linux` at `--branch
-rpi-6.12.y`, whose tip moves. Two kernel builds weeks apart are not the same
-kernel — which matters for a published benchmark, and sits awkwardly next to
-Pillar 3 now that everything else is pinned.
+✅ **Settled — pin at step 9, not before.** `kernel/01-build-kernel.sh` still
+clones `raspberrypi/linux` at `--branch rpi-6.12.y`, whose tip moves, so two
+builds weeks apart are not the same kernel. The mechanism is now in place and
+inert; see [Decisions applied](#decisions-applied).
 
-I left it alone on purpose: pinning it changes *which* kernel the v0.25 A/B
-measures, and that decision belongs with the step-9 rebuild rather than with a
-tidy-up commit. It is recorded in the ROADMAP under Phase 4a. Worth deciding
-before you generate numbers you intend to publish, not after.
+---
+
+## Decisions applied
+
+Six decisions came back on 2026-07-30. All are applied; this is what changed.
+
+### 1. NOAA TLEs — fetch by `CATNR`, validated live ✅ `cab1755`
+
+Re-validated all three catalogue numbers against the live API before committing.
+Each returns a real three-line element set, both element lines checksum-clean,
+epoch day 211 of 2026:
+
+| Satellite | NORAD | Result |
+|---|---|---|
+| NOAA 15 | 25338 | name, checksums, catalogue number all verified |
+| NOAA 18 | 28654 | as above |
+| NOAA 19 | 33591 | as above |
+
+Validating them turned up a gap worth closing. A `CATNR` query returns whatever
+CelesTrak holds for that number, so a typo in the list fetches a real,
+checksum-clean TLE **for the wrong satellite** — and `validate_tle` cannot see
+that, because there is nothing wrong with the data. It is a failure with no
+symptom: predict answers confidently, the antenna points somewhere, nothing
+arrives. `validate_catnr()` now checks the catalogue number in columns 3–7 of both
+element lines against what was requested.
+
+The README one-liner is fixed the same way and keeps the error-page guard — it
+checks the *content*, not `curl`'s exit status, because an invalid group query
+answers HTTP 200 with prose.
+
+### 2. Affinity matrix — kept ✅ `18dfe62`
+
+Recorded as settled in three places, with the explicit note that it is not to be
+traded down for runtime: if a run must be shortened, drop a load condition, not
+the affinity matching. The ROADMAP's one-liner is replaced with both commands,
+including why `-a 1-3 -t 3` is not redundant with `taskset`.
+
+### 3. Kernel pin — at step 9, mechanism ready now ✅ `878f9c8`
+
+Nothing about which kernel gets built changes today: `KERNEL_COMMIT` is empty,
+which keeps the existing behaviour exactly. Setting it switches to an init+fetch
+of that exact commit and verifies `HEAD` against it — a one-line edit at the
+rebuild.
+
+What is new is that every build now **records** what it built: the SHA is
+printed, written into the package as `kernel-commit`, and an unpinned build prints
+the exact `KERNEL_COMMIT="..."` line to paste back. Without that there would be
+nothing to pin *to* after the fact. `BENCHMARKS.md` has a kernel-provenance table
+to fill in at the rebuild.
+
+**Side effect worth knowing about:** that addition took `01-build-kernel.sh` to
+417 lines, over the 400 cap. The rule says a script that outgrows the cap gets
+split, not that its comments get trimmed to fit — so packaging moved to
+`kernel/package-kernel.sh` (build 316 lines, package 160). That also means
+repackaging no longer requires rebuilding: edit a Pi-side script, re-run the
+packager, get a tarball in seconds instead of ninety minutes. Verified against a
+fake kernel tree — 21 checks covering tarball contents, the recorded commit, and
+both abort paths.
+
+### 4. Licensing ✅ `4baa55a`
+
+`kernel/sdr-rt.config` is GPL-2.0-only; everything else GPL-3.0-or-later. SPDX
+headers on all 33 tracked files except `LICENSE` itself — line 2 in shell scripts
+so the shebang stays first, HTML comments in Markdown so nothing renders.
+
+One line per file rather than a full REUSE block, matching the kernel's own
+convention, and **no copyright line was added to any file** — attribution stays
+"the KosmOS authors" in the README, and your name appears nowhere in the repo.
+
+### 5. Do not merge ✅
+
+Not merged. `main` is still `2fc18b1`, byte-identical to where you left it.
+
+### 6. Sequencing — gate 0 before step 9 ✅ `18dfe62`
+
+Added to the ROADMAP ahead of the existing pre-flight, with three checkboxes:
+nothing bridge-related left running on pi-server; the bridge verified live from
+altai **on Tor Metrics**, not merely "the container is up"; then the pre-flight.
+`BENCHMARKS.md` points at the gate too, since that is where someone starting a
+benchmark run will be reading.
+
+The reasoning is written down because it is not obvious from a task list: step 9
+means kernel swaps, failed boots and possibly a reflash, and a bridge losing
+identity keys or dropping off the network underneath that costs real users — plus
+the accrued reputation a bridge loses when it vanishes and returns.
+
+Both checks need the fingerprint, which is why they are done by hand and stay out
+of the repo. The gate says to record only "verified, date". I scanned the tracked
+tree for 40-hex fingerprints, IP literals and email addresses: the only matches
+are git commit SHAs used as pins, the shellcheck tarball's SHA-256, and Debian
+version numbers.
