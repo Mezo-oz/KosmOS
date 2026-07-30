@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 # These are Linux shell scripts and a Linux kernel config fragment. A CRLF in
 # them is a real failure, not a cosmetic one: a shebang gains a trailing \r and
 # the script dies with "bad interpreter", and merge_config.sh carries the \r

@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # KosmOS — Project Roadmap & Vision
 
 *Naming settled 2026-07-29: it's **KosmOS** with a K — matches the existing repo

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================================
 # KosmOS Post-Install 02d — Russian Locale (optional, personal preference)
 # ============================================================================

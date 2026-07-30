@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 id: kosmos_discontinuity_probe
 label: Discontinuity Probe
 category: '[KosmOS]'

@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # KosmOS RT Kernel Benchmark
 
 **Status: no results yet.** The harnesses are written; nothing has been measured.

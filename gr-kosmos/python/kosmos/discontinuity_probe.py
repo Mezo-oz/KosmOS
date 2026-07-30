@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """
 Sample-discontinuity probe — the gauge in the pipe.
 

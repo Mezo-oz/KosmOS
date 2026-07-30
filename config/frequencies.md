@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # Frequency Reference
 
 A working cheatsheet for the signals KosmOS is built to receive, plus the ones

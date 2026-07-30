@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================================
 # KosmOS Kernel Install Script — Run this ON the Raspberry Pi 5
 # ============================================================================

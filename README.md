@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # KosmOS
 
 A real-time Linux kernel build for the Raspberry Pi 5, tuned for software-defined
@@ -373,9 +374,16 @@ and it writes `~/.predict/predict.tle`, the only file `predict` reads.
 
 ## License
 
-KosmOS's own code — every script in this repository, the config fragment, and the
-documentation — is licensed under the **GNU General Public License, version 3 or
-later**. The full text is in [`LICENSE`](LICENSE).
+KosmOS's own code — every script in this repository and the documentation — is
+licensed under the **GNU General Public License, version 3 or later**. The full
+text is in [`LICENSE`](LICENSE).
+
+**One deliberate exception: `kernel/sdr-rt.config` is GPL-2.0-only**, matching the
+kernel it configures. It is merged into a GPL-2.0-only kernel's `.config` by
+`merge_config.sh`, so licensing it the same way removes any question about using
+it alongside kernel sources. Every file carries an `SPDX-License-Identifier` line
+saying which of the two applies to it, so the answer is always in the file rather
+than inferred from this section.
 
 ```
 Copyright (C) 2026 the KosmOS authors
@@ -407,13 +415,16 @@ So there are two licences in play and they cover different things:
 | What | Licence | Whose code |
 |---|---|---|
 | Scripts, docs, `gr-kosmos/` | GPL-3.0-or-later | KosmOS |
+| `kernel/sdr-rt.config` | GPL-2.0-only | KosmOS |
 | The kernel that gets built | GPL-2.0-only (upstream) | Raspberry Pi / Linux |
 | Everything `02c`/`03` install | each project's own terms | upstream |
 
 GPL-2.0-only and GPL-3.0 are not compatible with each other, which matters if you
 ever combine code rather than just invoke it. Nothing in this repository does:
 these scripts drive the kernel build as a separate program, and the config
-fragment is an *input* to that build, not part of the resulting work.
+fragment is an *input* to that build, not part of the resulting work. Licensing
+the fragment GPL-2.0-only closes the question rather than relying on that
+argument.
 
 The tools the userspace scripts install keep their own licences. `02c` and `03`
 build from upstream sources and change none of them; the pinned revision of each

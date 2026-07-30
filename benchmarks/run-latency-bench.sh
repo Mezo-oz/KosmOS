@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================================
 # KosmOS — Test 1: scheduling latency (cyclictest)
 # ============================================================================
@@ -25,25 +26,19 @@
 #   whole   cyclictest -S — one thread per CPU, across all four
 #   pinned  taskset -c 1-3, threads pinned to CPUs 1-3 only
 #
-#   The pinned mode is what makes C-B meaningful. In config C, CPU 0 is the
-#   housekeeping core and is NOT tickless, so an unpinned run schedules there and
-#   measures config B — the isolation delta reads as zero and the conclusion is
-#   wrong. But the same is true in reverse: comparing a pinned run in C against
-#   an unpinned run in B compares two different experiments. So both modes run in
-#   all three configurations, and each delta is taken between like and like.
-#
-#   Settled 2026-07-30, superseding the earlier method note that pinned only in
-#   config C. Pinning only there produces a C-B number that mixes an affinity
-#   change in with the dynticks change. It costs roughly double the runtime,
-#   about 35 minutes per configuration, and that is the price of an attributable
-#   delta. If a run has to be shortened, drop a load condition — not the affinity
-#   matching.
+#   Settled 2026-07-30. B-A is read off the whole rows and C-B off the pinned
+#   rows, so each delta is between like and like. In config C an unpinned run
+#   schedules on CPU 0, which is the housekeeping core and not tickless, so it
+#   measures config B and the isolation delta reads as zero — but pinning *only*
+#   in C is equally wrong, because then C-B compares two different experiments
+#   and the affinity change gets credited to dynticks. Costs about 35 minutes per
+#   configuration; if a run must be shortened, drop a load condition, not the
+#   affinity matching. Full argument in BENCHMARKS.md.
 #
 # GOVERNOR: set to performance before every run, in every configuration, and
-# restored on exit. The kernel's CONFIG_CPU_FREQ_DEFAULT_GOV_PERFORMANCE does not
-# survive Pi OS boot — the running governor was observed as ondemand on hardware
-# — and ondemand adds a frequency-ramp delay on top of scheduling latency. Left
-# unpinned it would inflate whichever kernel happened to be measured while cold.
+#   restored on exit. The kernel default does not survive Pi OS boot — ondemand
+#   was observed on hardware — and its frequency-ramp delay would otherwise land
+#   on whichever kernel happened to be measured cold. Also in BENCHMARKS.md.
 # ============================================================================
 
 set -euo pipefail

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 """
 gr-kosmos — out-of-tree GNU Radio blocks for KosmOS.
 

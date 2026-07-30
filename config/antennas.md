@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # Antenna Selection Guide
 
 Which antenna for which mission, and why.

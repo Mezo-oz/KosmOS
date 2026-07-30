@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================================
 # KosmOS — package a built kernel for transfer to the Pi
 # ============================================================================
