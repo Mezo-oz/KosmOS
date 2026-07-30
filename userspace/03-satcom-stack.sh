@@ -29,7 +29,7 @@
 #
 # TIME: budget hours, not minutes. SatDump and SDR++ are both substantial C++
 # builds on four Cortex-A76 cores. Neither has been run on hardware yet — see
-# BENCHMARKS.md and OVERNIGHT-REPORT.md for what is verified and what is not.
+# BENCHMARKS.md for what is verified and what is not.
 # ============================================================================
 
 set -euo pipefail
