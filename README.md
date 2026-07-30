@@ -337,19 +337,38 @@ Orbital elements go stale as orbits decay, so refresh them before a session:
 ./automation/tle-updater.sh
 ```
 
-Do not hand-roll this with a `wget` one-liner. Two things make it less obvious
-than it looks:
+**Fetch by catalogue number, not by group.** Two things make this less obvious
+than it looks, both verified against the live API on 2026-07-30:
 
-- **There is no CelesTrak `noaa` group.** `GROUP=noaa` answers HTTP 200 with the
-  body `Invalid query: ... (GROUP=noaa not found)`, so `wget` reports success and
-  writes 61 bytes of prose into `noaa.tle`.
+- **There is no CelesTrak `noaa` group.** `GROUP=noaa` answers **HTTP 200** with
+  the body `Invalid query: ... (GROUP=noaa not found)`, so `wget` reports success
+  and writes 61 bytes of prose into `noaa.tle`. Nothing downstream notices.
 - **`GROUP=weather` does not contain NOAA 15, 18 or 19** — only the JPSS birds,
-  NOAA 20 and 21. The APT satellites are reachable only by catalogue number
-  (25338, 28654, 33591).
+  NOAA 20 and 21. The APT satellites are reachable *only* by catalogue number.
 
-`tle-updater.sh` fetches those by catalogue number, validates every download
-against the mod-10 checksum each TLE line carries, and writes
-`~/.predict/predict.tle` — the only file `predict` actually reads.
+| Satellite | NORAD |
+|---|---|
+| NOAA 15 | 25338 |
+| NOAA 18 | 28654 |
+| NOAA 19 | 33591 |
+
+If you want to do it by hand, do it by `CATNR` and keep the guard — the failure
+mode here is a successful-looking download of an error page:
+
+```bash
+for id in 25338 28654 33591; do
+  curl -fsS "https://celestrak.org/NORAD/elements/gp.php?CATNR=$id&FORMAT=tle" \
+    | tr -d '\r' > "$id.tle"
+  # An error page is HTTP 200, so check the content, not the exit status.
+  grep -q "^1 " "$id.tle" || { echo "bad response for $id:"; cat "$id.tle"; }
+done
+```
+
+`tle-updater.sh` does that and three things more: it verifies the mod-10 checksum
+each TLE line carries, it confirms the returned elements actually carry the
+catalogue number that was asked for — a typo otherwise fetches a valid TLE for the
+wrong satellite, which has no symptom other than an antenna pointing at nothing —
+and it writes `~/.predict/predict.tle`, the only file `predict` reads.
 
 ## License
 

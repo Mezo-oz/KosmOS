@@ -182,6 +182,36 @@ tle_line_counts() {
     ' "$1"
 }
 
+# A CATNR query returns whatever CelesTrak holds for that number, and a typo in
+# PREDICT_SATS fetches a real, checksum-clean TLE for the wrong satellite --
+# which validate_tle cannot see, because there is nothing wrong with it. The
+# catalogue number is columns 3-7 of both element lines, so check it against what
+# was asked for.
+#
+# Tracking the wrong satellite is a failure mode with no symptom: predict answers
+# confidently, the antenna points somewhere, and nothing arrives.
+validate_catnr() {
+    local file="$1" want="$2" label="$3"
+    local mismatched
+
+    mismatched=$(awk -v want="$want" '
+        function strip(s) { gsub(/^[ 0]+/, "", s); return s }
+        { sub(/\r$/, "") }
+        /^[12] / {
+            if (strip(substr($0, 3, 5)) != strip(want)) bad++
+        }
+        END { print bad + 0 }
+    ' "$file")
+
+    if [ "$mismatched" -ne 0 ]; then
+        echo "         REJECTED $label: element lines do not carry catalogue"
+        echo "                  number $want — this is a different satellite"
+        return 1
+    fi
+
+    return 0
+}
+
 # Returns 0 if the file holds at least one complete, checksum-clean TLE record.
 validate_tle() {
     local file="$1" label="$2"
@@ -251,6 +281,11 @@ for entry in "${PREDICT_SATS[@]}"; do
     fi
 
     if ! validate_tle "$one" "$label"; then
+        FAILURES=$((FAILURES + 1))
+        continue
+    fi
+
+    if ! validate_catnr "$one" "$catnr" "$label"; then
         FAILURES=$((FAILURES + 1))
         continue
     fi
