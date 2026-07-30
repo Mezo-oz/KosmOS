@@ -267,19 +267,31 @@ else
     echo "       Skipping gpredict (no display detected). Install later with: sudo apt install gpredict"
 fi
 
-# Download initial TLE data for satellite tracking.
+# Seed TLE data, for the tools that read this directory (gpredict, SatDump).
 #
-# Deliberately not checksummed: TLEs change every few hours by design, so a
-# pinned digest would be wrong by the next pass. Their freshness is the point --
-# automation/tle-updater.sh is what keeps them current, and it writes the copy
-# predict actually reads.
+# Deliberately not checksummed: elements change every few hours by design, so a
+# pinned digest would be wrong by the next pass. Freshness is the property that
+# matters, not immutability.
+#
+# GROUP=weather, not GROUP=noaa. There is no "noaa" group: that query returns
+# HTTP 200 with the body 'Invalid query: ... (GROUP=noaa not found)', so wget
+# succeeds, writes 61 bytes of prose into noaa.tle, and the || branch below never
+# fires. Verified against the live API 2026-07-29.
+#
+# This is a seed, not the mechanism. Two things it does not do:
+#   - it does not write ~/.predict/predict.tle, the only file predict reads
+#   - GROUP=weather does not contain NOAA 15, 18 or 19 — only the JPSS birds.
+#     The APT satellites are reachable only by catalogue number.
+# automation/tle-updater.sh handles both, and validates every download against
+# the TLE line checksums so an error page cannot be installed as elements.
 mkdir -p "$HOME/.config/satellite-tle"
-echo "       Downloading TLE data..."
-wget -q -O "$HOME/.config/satellite-tle/noaa.tle" \
-    "https://celestrak.org/NORAD/elements/gp.php?GROUP=noaa&FORMAT=tle" 2>/dev/null || \
-    echo "       (TLE download failed — update manually later)"
+echo "       Downloading seed TLE data..."
+wget -q -O "$HOME/.config/satellite-tle/weather.tle" \
+    "https://celestrak.org/NORAD/elements/gp.php?GROUP=weather&FORMAT=tle" 2>/dev/null || \
+    echo "       (TLE download failed — run automation/tle-updater.sh later)"
 wget -q -O "$HOME/.config/satellite-tle/amateur.tle" \
     "https://celestrak.org/NORAD/elements/gp.php?GROUP=amateur&FORMAT=tle" 2>/dev/null || true
+echo "       For predict, and for NOAA 15/18/19, run: automation/tle-updater.sh"
 
 echo ""
 echo "       Pinned revisions recorded in $MANIFEST"

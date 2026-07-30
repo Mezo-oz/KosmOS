@@ -276,8 +276,9 @@ positioning leans harder on pillars 2 and 3.
 ✅ rtl_433 (multi-protocol RF decoder)
 ✅ dump1090 (ADS-B aircraft tracking)
 ✅ predict (satellite pass prediction)
-   (⚠️ TLEs currently land in a directory predict never reads — updater must
-   target `~/.predict/predict.tle`)
+   (✅ fixed — `automation/tle-updater.sh` writes `~/.predict/predict.tle`, the
+   file predict actually reads. It also stopped fetching a CelesTrak group that
+   does not exist; see Phase 1b.)
 ✅ Russian locale (ru_RU.UTF-8) — **optional/skippable personal config**, not a
    core feature (README has it right; this doc previously overclaimed it)
 ✅ Dual-boot, now genuinely isolated — `os_prefix=` landed `43d8368`. Stock
@@ -321,12 +322,25 @@ first run on pi-server is the test.*
     as how your kernel talks to different NICs through a common interface
 
 #### 1b. Orbit Prediction & Tracking
-- [ ] **TLE auto-updater** — Cron job or systemd timer to refresh orbital elements
-  - TLEs go stale within days (orbits decay)
-  - Pull from CelesTrak for NOAA, GOES, amateur, weather sats
-  - Like an OSPF neighbor table that needs periodic refresh
-  - **Must also fix the predict path bug**: write to `~/.predict/predict.tle`
-    (the current TLE directory is never read by predict)
+- [x] **TLE auto-updater** — *`automation/tle-updater.sh`. Written and tested
+  against the live CelesTrak API; not yet installed on a timer.*
+  - Predict path bug fixed: it writes `~/.predict/predict.tle`, the only file
+    predict reads. The old download target was never read by anything.
+  - **Two CelesTrak facts found while writing it, both verified 2026-07-29:**
+    `GROUP=noaa` is not a valid group — it returns HTTP 200 with
+    `Invalid query: ... (GROUP=noaa not found)`, which `wget` happily writes to
+    disk as 61 bytes of prose. And `GROUP=weather`, which *is* valid, does not
+    contain NOAA 15/18/19 at all, only NOAA 20/21. The APT satellites are
+    reachable only by catalogue number. Both the README one-liner and
+    02c's seed download were fetching the invalid group; both fixed.
+  - Every download is validated against the mod-10 checksum in column 69 of each
+    TLE line before it is installed. That is the only integrity check this data
+    admits — there is no digest to pin on something that changes hourly — and it
+    catches the HTTP-200-error-page case, truncated transfers and flipped digits.
+  - predict tracks at most 24 satellites from that one file, so the predict set
+    is an explicit catalogue-number list and the bulk groups go to
+    `~/.config/satellite-tle/` for gpredict and SatDump instead.
+  - Still to do: put it on a timer (cron line is in the script header).
 - [ ] **Rotator control support** (hamlib / rotctld)
   - For automated antenna pointing during passes
   - Uses serial/USB to talk to antenna rotator hardware

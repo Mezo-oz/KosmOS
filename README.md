@@ -311,10 +311,22 @@ the whole capture in one step.
 Orbital elements go stale as orbits decay, so refresh them before a session:
 
 ```bash
-mkdir -p ~/.config/satellite-tle
-wget -O ~/.config/satellite-tle/noaa.tle \
-  "https://celestrak.org/NORAD/elements/gp.php?GROUP=noaa&FORMAT=tle"
+./automation/tle-updater.sh
 ```
+
+Do not hand-roll this with a `wget` one-liner. Two things make it less obvious
+than it looks:
+
+- **There is no CelesTrak `noaa` group.** `GROUP=noaa` answers HTTP 200 with the
+  body `Invalid query: ... (GROUP=noaa not found)`, so `wget` reports success and
+  writes 61 bytes of prose into `noaa.tle`.
+- **`GROUP=weather` does not contain NOAA 15, 18 or 19** — only the JPSS birds,
+  NOAA 20 and 21. The APT satellites are reachable only by catalogue number
+  (25338, 28654, 33591).
+
+`tle-updater.sh` fetches those by catalogue number, validates every download
+against the mod-10 checksum each TLE line carries, and writes
+`~/.predict/predict.tle` — the only file `predict` actually reads.
 
 ## License
 
