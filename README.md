@@ -94,11 +94,26 @@ sudo bash ~/kosmos-kernel/install-kernel.sh
 sudo reboot
 ```
 
-The installer backs up `config.txt` and the stock kernel to a timestamped directory
-under the boot partition, copies `kernel-kosmos.img` in beside `kernel_2712.img`,
-installs modules to their own versioned directory, runs `depmod`, and adds a `[pi5]`
-section to `config.txt` pointing at the new kernel. **The stock kernel is never
-overwritten.**
+Everything KosmOs boots is installed into its own directory, `kosmos/`, on the boot
+partition — kernel image, device tree blobs, overlays and command line. Modules go to
+their own versioned directory under `/lib/modules/`. The installer then adds a `[pi5]`
+block to `config.txt` setting `os_prefix=kosmos/`, which is the firmware mechanism for
+loading a completely separate set of boot files.
+
+**`config.txt` is the only stock file modified.** The stock kernel, its device trees,
+its overlays and `cmdline.txt` are all left byte-identical, so the stock kernel keeps
+booting against its own device trees rather than KosmOs's. That matters for reverting,
+and it matters for the RT benchmark, where the entire comparison rests on nothing
+differing between the two boots except the kernel.
+
+`config.txt` is written **last**, only after every required file is confirmed present.
+Until that moment the Pi still boots exactly as it did before, so an interrupted or
+failed install cannot leave you unable to boot.
+
+The KosmOs kernel command line is derived from the stock `cmdline.txt` — so `root=`
+and friends carry over unchanged — with `nohz_full` and `rcu_nocbs` appended to
+activate full dynticks on CPUs 1–3, leaving CPU 0 as the housekeeping core. Set
+`NOHZ_FULL_CPUS=""` at the top of `install-kernel.sh` to disable that.
 
 ### 3. Verify and install SDR tools
 
@@ -108,11 +123,19 @@ overwritten.**
 
 It first checks the running kernel — version string, `/sys/kernel/realtime`, timer
 frequency, CPU governor, USB, whether `ax25` loads — and prints a pass/fail summary.
-Then it prompts before installing userspace. Answer `n` if you only want the checks.
+Nothing is installed before that, so it is safe to run just for the checks.
 
-The userspace step builds from source (`librtlsdr` from the RTL-SDR Blog fork, for v4
-support; `rtl_433`; `dump1090`; `predict`), blacklists the DVB-T driver so it cannot
-claim the dongle, and installs udev rules so non-root users can access it.
+It then offers two installs independently, each with its own prompt:
+
+- **RT benchmark tools** (`rt-tests`, `stress-ng`) — `cyclictest` and the load
+  generators for the kernel latency benchmark. Offered separately because that
+  benchmark needs no SDR hardware and no SDR tools, so it can be run before any of
+  the userspace stack exists.
+- **SDR userspace** — builds from source: `librtlsdr` (RTL-SDR Blog fork, for v4
+  support), `rtl_433`, `dump1090` and `predict`. Also blacklists the DVB-T driver so
+  it cannot claim the dongle, and installs udev rules for non-root access.
+
+Answer `n` to both if you only want the verification output.
 
 Confirm the hardware works:
 
@@ -137,13 +160,22 @@ contain `kosmos`, you booted the stock kernel.
 If the Pi boots and you can SSH in:
 
 ```bash
-sudo sed -i '/kernel=kernel-kosmos.img/d' /boot/firmware/config.txt
+sudo sed -i '/--- KosmOs custom kernel/,/--- end KosmOs/d' /boot/firmware/config.txt
 sudo reboot
 ```
 
-If it does not boot: pull the SD card, mount the boot partition on another machine
-(it is FAT32), delete the `kernel=kernel-kosmos.img` line from `config.txt`, and boot
-again. The bootloader falls back to the untouched stock kernel.
+If it does not boot: pull the SD card, mount the boot partition on another machine (it
+is FAT32), and delete the block between the `--- KosmOs custom kernel` and
+`--- end KosmOs` markers in `config.txt`. The firmware falls back to the untouched
+stock kernel. A copy of the original `config.txt` is also saved in the timestamped
+`backup-*` directory alongside it.
+
+Either way this restores `config.txt` byte-for-byte, and repeated
+install/revert cycles leave no residue. Nothing else needs undoing, because nothing
+else was changed — the `kosmos/` directory can be left in place or deleted.
+
+To switch kernels for the RT benchmark, comment out the two directives inside that
+block to boot stock, and uncomment them to boot KosmOs.
 
 ## What the config fragment changes
 
