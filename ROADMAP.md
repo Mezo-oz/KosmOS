@@ -801,6 +801,15 @@ of the repo on the Pi.
       can re-`up` the stack at boot. The identity volume
       (`tor-services_tor-data`) is deliberately *kept* as the rollback until
       gate 0.2 has held for a few days; keeping it is not the same as running it.
+
+      ⚠️ **Not only Docker.** Checked 2026-07-30: pi-server also has an
+      apt-installed tor — `tor.service` enabled, `tor@default.service`
+      enabled-runtime — with its own `DataDirectory` at `/var/lib/tor` on the
+      host, entirely separate from the container's volume. Stopping the compose
+      stack and disabling `docker.service` leaves it enabled and it starts on the
+      next boot, which is precisely what this gate exists to prevent. Disable
+      `tor.service` and `tor@default.service` too, and check whether that host
+      tor holds an identity of its own before reflashing the box.
    2. **Confirm the bridge is up and published from altai**, by checking the
       **same hashed fingerprint** on Tor Metrics — not merely that the container
       is running locally. A container can be up while the bridge is unreachable
