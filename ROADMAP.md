@@ -17,11 +17,19 @@ Two Raspberry Pi 5s, with a deliberate and permanent split of roles:
   Pi OS `6.12.62+rpt-rpi-2712` is already installed, so no kernel pinning is
   needed for the A/B.
 
-- **altai — the permanent production host.** Runs the Amnezia work and the
-  `tor-services` Docker stack (an obfs4 bridge + snowflake proxy + watchtower),
-  migrated here 2026-07-29. Stable, always-on, not to be disrupted for KosmOS.
+- **altai — the permanent production host.** Runs the Amnezia work, and will run
+  the `tor-services` Docker stack (an obfs4 bridge + snowflake proxy +
+  watchtower). Stable, always-on, not to be disrupted for KosmOS.
   **The production bridge does not return to pi-server** — this is settled, not
   provisional.
+
+  ⚠️ **Correction 2026-07-30: that migration has not happened yet.** This document
+  previously recorded it as done on 2026-07-29; it was decided then, not executed.
+  The stack is still on pi-server, which is why Gate 0 below exists and why it
+  blocks step 9. The migration is Path B: pi-server is freed by moving the bridge
+  off it, not by swapping SD cards — there is no spare card. Procedure lives in
+  the migration runbook beside the compose file in the `tor-services` project
+  directory, deliberately outside this repo.
 
 Why the split matters for this project: the RT kernel benchmark needs a box you
 can reboot between kernels at will and reflash if an install goes wrong. A host
@@ -785,16 +793,24 @@ of the repo on the Pi.
    just an inconvenience. A bridge that vanishes and returns also loses accrued
    reputation.
 
-   In order, all by hand:
+   In order, all by hand, following the migration runbook in the `tor-services`
+   project directory:
 
    1. **Confirm nothing bridge-related is left running on pi-server** — no `tor`
-      process, no `tor-services` containers, no enabled units, and no leftover
-      `DataDirectory` holding identity keys.
-   2. **Confirm the bridge is up and published from altai**, by checking it on Tor
-      Metrics (Relay Search) and seeing recent bridge activity — not merely that
-      the container is running locally. A container can be up while the bridge is
-      unreachable from outside.
+      process, no `tor-services` containers, no enabled units, and nothing that
+      can re-`up` the stack at boot. The identity volume
+      (`tor-services_tor-data`) is deliberately *kept* as the rollback until
+      gate 0.2 has held for a few days; keeping it is not the same as running it.
+   2. **Confirm the bridge is up and published from altai**, by checking the
+      **same hashed fingerprint** on Tor Metrics — not merely that the container
+      is running locally. A container can be up while the bridge is unreachable
+      from outside, and it can be reachable under a *new* identity, which is a
+      failure dressed as a success.
    3. **Only then** run the pre-flight below, and only after that, step 9.
+
+   The migration is the gate. It is not preparation for the gate — moving the
+   bridge is what satisfies 0.1 and 0.2, because pi-server cannot be freed any
+   other way (no spare SD card, so no media swap).
 
    Steps 1 and 2 need the bridge's fingerprint, which is exactly why they are
    done by hand and stay out of this repo: **no fingerprint, WAN IP or email in
@@ -805,7 +821,11 @@ of the repo on the Pi.
    - [ ] gate 0.2 — bridge verified live on Tor Metrics from altai
    - [ ] gate 0.3 — pre-flight below complete
 
-   **Pre-flight on pi-server, after gate 0:**
+   **Pre-flight on pi-server, after gate 0** — add to the checks below:
+   **inventory `/lib/modules`** (`ls -la /lib/modules/ && uname -r`) before a
+   second kernel's modules land beside the stock set, and note that
+   `sudo systemctl enable --now docker` may need undoing if the migration
+   disabled it on this box.
    - **Check `/boot/firmware/config.txt` for a stale custom-kernel block.** An
      RF-Linux-era block (`# RF-Linux custom kernel` / `kernel=kernel-rflinux.img`)
      was found on **altai** during the earlier investigation; whether pi-server has
