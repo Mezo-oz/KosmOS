@@ -4,6 +4,35 @@
 (Mezo-oz/KosmOS), the committed artifacts (kernel-kosmos.img, `-kosmos`
 localversion), and the Cyrillic-flavoured "Kosmos" fits the SATCOM angle.*
 
+## Hardware Topology (permanent, decided 2026-07-29)
+
+Two Raspberry Pi 5s, with a deliberate and permanent split of roles:
+
+- **pi-server — the dedicated KosmOS dev / break-fix box.** All kernel work
+  happens here: custom-kernel swaps, `os_prefix` installs, benchmark reboots,
+  crashes, and full reflashes are all *expected and welcome* on this machine.
+  It runs no production service, so there is **no reboot-window constraint** —
+  breaking it is the point. It is the config-A benchmark baseline too: stock
+  Pi OS `6.12.62+rpt-rpi-2712` is already installed, so no kernel pinning is
+  needed for the A/B.
+
+- **altai — the permanent production host.** Runs the Amnezia work and the
+  `tor-services` Docker stack (an obfs4 bridge + snowflake proxy + watchtower),
+  migrated here 2026-07-29. Stable, always-on, not to be disrupted for KosmOS.
+  **The production bridge does not return to pi-server** — this is settled, not
+  provisional.
+
+Why the split matters for this project: the RT kernel benchmark needs a box you
+can reboot between kernels at will and reflash if an install goes wrong. A host
+also running a live Tor bridge is the opposite of that. Separating them removes
+the only scheduling constraint the benchmark had.
+
+**Relationship to the Phase 3c Tor bridge module (below):** KosmOS *ships* an
+optional bridge module as a distro feature. That is entirely separate from the
+production bridge on altai. The module is dogfooded later with a **throwaway
+test identity** — never the live bridge's keys. (Repo docs stay generic about
+the production bridge: no WAN IP, email, or fingerprint in any committed file.)
+
 ## Identity: What KosmOS Is (and Isn't)
 
 **KosmOS is a ground-up, SATCOM-focused Linux distribution built for the Raspberry Pi 5.**
@@ -218,6 +247,9 @@ positioning leans harder on pillars 2 and 3.
    NOT DETECTED on a genuinely RT kernel — a false negative on the project's
    central claim. Fixed to check `/proc/config.gz`, then `uname -v`, then the
    legacy file.
+   *This build is the April RF-Linux-era kernel, and it lives on altai (now the
+   production host). It proved PREEMPT_RT works — a v0.1 result — but the bench
+   box (pi-server) gets a fresh `-kosmos` build at step 9; it is not carried over.*
 ✅ Real-time scheduling (1000Hz tick, high-res timers)
 ✅ Full dynticks (`CONFIG_NO_HZ_FULL`) — **activated** `43d8368`: `nohz_full` and
    `rcu_nocbs` now on the KosmOS command line (CPUs 1-3 by default). Was
@@ -408,6 +440,11 @@ appliance. Phases 1–2 build the parts; Phase 3 makes them run themselves.*
   - Turns the box from passive receiver into a public-facing network service:
     wider attack surface. Ship disabled, firewall it away from the capture
     pipeline, document the tradeoff.
+  - **Decoupled from the production bridge (see Hardware Topology).** This module
+    is a distro feature to build and test; the live obfs4 bridge lives on altai
+    and is never touched by KosmOS development. When dogfooding this module,
+    generate a **throwaway test identity** — never reuse the production bridge's
+    keys or fingerprint. A test bridge and the real one must never share identity.
 
 ### Phase 4: "Hardened Platform" — Reliability & Distribution
 *Goal: Make KosmOS reproducible and distributable*
@@ -578,22 +615,25 @@ as the `git mv`.
    `os_prefix` layout on the boot partition. Then the three-config matrix above
    (Test 1 needs no dongle; Test 2 the day the RTL-SDR v4 arrives).
 
-   **Blockers found on hardware 2026-07-29 — handle before rebuilding:**
-   - **A stale block sits in `/boot/firmware/config.txt`** from the April install:
-     `# RF-Linux custom kernel` / `[pi5]` / `kernel=kernel-rflinux.img`. The new
-     installer greps for `^os_prefix=kosmos/` and will not see it, so it would
-     append a second block and leave two conflicting `kernel=` directives. The
-     documented revert one-liner will not match it either (different name). Remove
-     it by hand first, and delete the orphaned `/boot/firmware/kernel-rflinux.img`.
-   - **Pick the stock comparison kernel deliberately.** `/lib/modules` holds
-     6.6.51, 6.12.47, 6.12.62, 6.12.79-v8-16k+ (ours) and 6.18.34. Benchmarking
-     RT 6.12.79 against stock **6.18.34** would fold six minor releases of
-     scheduler changes into the "PREEMPT_RT" delta. Use a **6.12.x** stock kernel
-     — 6.12.62 is already installed — so the RT patch is the only difference.
+   **Bench box = pi-server** (see Hardware Topology). No reboot-window constraint:
+   swaps, crashes and reflashes are expected there.
+
+   **Pre-flight on pi-server before rebuilding (run once the bridge is verified on
+   altai):**
+   - **Check `/boot/firmware/config.txt` for a stale custom-kernel block.** An
+     RF-Linux-era block (`# RF-Linux custom kernel` / `kernel=kernel-rflinux.img`)
+     was found on **altai** during the earlier investigation; whether pi-server has
+     one is **unverified** — check it directly in the pre-flight. If present, the
+     new installer greps for `^os_prefix=kosmos/`, will not see the old-named block,
+     and would append a second one, leaving two conflicting `kernel=` directives;
+     the revert one-liner will not match the old name either. Remove any such block
+     by hand first and delete the orphaned image.
+   - **Config-A baseline is already right: stock `6.12.62+rpt-rpi-2712`.** Boot
+     that for config A, not a newer stock kernel, so the RT patch is the only
+     difference — no pinning needed, it is installed.
    - **Set the governor to performance on both kernels** before any run, or record
-     that the figures include ondemand ramp latency.
-   - `altai.local` is **also the Amnezia build box.** Kernel swaps and reboots
-     there disrupt that project; it is currently paused, so the window is open.
+     that the figures include ondemand ramp latency. Ship this as the
+     performance-governor systemd unit (part of the pre-flight).
 10. Order the RTL-SDR Blog v4 + dipole antenna kit (if not already)
 11. Build `03-satcom-stack.sh` — pinned from line one
 12. First NOAA APT capture using SatDump
