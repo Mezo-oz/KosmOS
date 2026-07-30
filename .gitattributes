@@ -5,3 +5,15 @@
 *.sh text eol=lf
 *.config text eol=lf
 .gitignore text eol=lf
+
+# Same rule, same reason, for everything else that is read by a Linux tool
+# rather than by a person: a systemd unit, a GitHub Actions workflow, a Python
+# module, a CMake file. None of these tolerate stray carriage returns well, and
+# a workflow that fails only on someone else's checkout is a bad way to find out.
+*.service text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.py text eol=lf
+*.txt text eol=lf
+*.cmake text eol=lf
+CMakeLists.txt text eol=lf

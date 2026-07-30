@@ -1,0 +1,42 @@
+# ============================================================================
+# KosmOS — pin the CPU governor to performance at boot
+# ============================================================================
+# Install with automation/install-governor.sh, which also handles the part a
+# unit file cannot: getting out of the way of whatever set the governor to
+# ondemand in the first place.
+#
+# WHY THIS EXISTS:
+#   CONFIG_CPU_FREQ_DEFAULT_GOV_PERFORMANCE=y sets the kernel's *default*
+#   governor and nothing more. On Raspberry Pi OS the running governor was
+#   observed as ondemand on 2026-07-29, on a kernel built with that option. The
+#   README's "pins the Cortex-A76 at full clock" is therefore not delivered by
+#   the kernel config alone, and a kernel rebuild will not fix it. This will.
+#
+#   It matters twice: for capture, where a frequency ramp is time a buffer
+#   spends overflowing, and for the benchmark, where ondemand ramp delay would
+#   be folded into whichever kernel happened to be measured cold.
+#
+# ORDERING:
+#   After=multi-user.target puts this at the end of boot, after the services
+#   that might write a governor of their own. Ordering alone is not enough if
+#   something rewrites it later, which is why the installer also masks Debian's
+#   ondemand.service when it finds it.
+#
+# Type=oneshot with RemainAfterExit=yes so `systemctl status` reports active
+# rather than dead after the write, and so the unit is a thing you can look at
+# and see the state of.
+# ============================================================================
+
+[Unit]
+Description=KosmOS: pin CPU scaling governor to performance
+Documentation=https://github.com/Mezo-oz/KosmOS
+After=multi-user.target
+ConditionPathExists=/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/kosmos-set-governor performance
+
+[Install]
+WantedBy=multi-user.target
