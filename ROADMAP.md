@@ -293,16 +293,28 @@ positioning leans harder on pillars 2 and 3.
 *Goal: Receive and decode real satellite signals*
 
 #### 1a. Satellite Reception Stack
-- [ ] **SatDump** — The all-in-one satellite processor
+
+*Scripts written and linted (`03-satcom-stack.sh` sequencing `03a`/`03b`/`03c`),
+pinned from line one. **No build has been executed** — that needs the Pi, so the
+first run on pi-server is the test.*
+
+- [x] **SatDump** — The all-in-one satellite processor — *`03b-satdump.sh`,
+  pinned to release 1.2.2 (`7aef0fe8441b`), built from source, prefix
+  `/usr/local`. Written, not yet built.*
   - Decodes NOAA APT/HRPT, GOES HRIT/EMWIN, Meteor-M LRPT, MetOp, FengYun
   - Handles capture → demodulation → decoding → image generation in one pipeline
   - This is the centerpiece tool for the SATCOM focus
-  - Build from source for ARM64 with GUI and CLI modes — **pinned commit**
-- [ ] **GNU Radio + gr-osmosdr** — The DSP framework
+- [x] **GNU Radio + gr-osmosdr** — The DSP framework — *`03a-gnuradio-stack.sh`,
+  from apt at pinned versions rather than source. The dependency chain is a
+  multi-hour build on four A76 cores, Debian ships the current 3.10.x series,
+  and apt authenticates against a signed InRelease file. Reconsider only when a
+  decoder needs something Debian's build lacks.*
   - For building custom signal processing flowgraphs
   - Required for advanced demodulation (Iridium, custom protocols)
-  - Heavy dependency chain — plan for a dedicated build step, **pinned**
-- [ ] **SoapySDR** — Hardware abstraction layer
+- [x] **SoapySDR** — Hardware abstraction layer — *apt, pinned, in `03a`. The
+  RTL-SDR Soapy module is deliberately **not** installed: RTL-SDR reaches every
+  tool through the Blog fork of librtlsdr in `/usr/local`, and stacking Soapy
+  modules is a documented conflict source.*
   - Lets all SDR tools talk to any SDR hardware through one API
   - Critical for HackRF support when you upgrade from RTL-SDR
   - Think of it as a HAL (Hardware Abstraction Layer) — same concept
@@ -322,9 +334,11 @@ positioning leans harder on pillars 2 and 3.
     directional (dish/yagi) tracking of specific satellites
 
 #### 1c. Spectrum Analysis & Visualization
-- [ ] **SDR++** — Modern GUI SDR receiver
+- [x] **SDR++** — Modern GUI SDR receiver — *`03c-sdrpp.sh`, pinned to master
+  `8c9f5ee8fe40` (2026-07-05). Pinned to a commit rather than a tag on purpose:
+  upstream's only release tag is `nightly`, which moves, and the newest numbered
+  tag (1.0.4) is from 2021. Written, not yet built.*
   - Waterfall display, multi-VFO, plugin architecture
-  - Build from source for ARM64 with RTL-SDR and HackRF support
   - This is your "Wireshark with live capture" equivalent for RF
 - [ ] **inspectrum** — Lightweight spectrogram viewer for recorded files
   - Post-capture analysis of I/Q recordings
@@ -646,7 +660,9 @@ as the `git mv`.
      that the figures include ondemand ramp latency. Ship this as the
      performance-governor systemd unit (part of the pre-flight).
 10. Order the RTL-SDR Blog v4 + dipole antenna kit (if not already)
-11. Build `03-satcom-stack.sh` — pinned from line one
+11. ~~Build `03-satcom-stack.sh` — pinned from line one~~ ✅ **written and
+    linted**, pinned from line one. Still needs its first run on pi-server;
+    nothing in it has been executed.
 12. First NOAA APT capture using SatDump
 
 **Carried forward from the audit, not yet scheduled:**
