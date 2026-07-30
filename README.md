@@ -54,11 +54,19 @@ Expect 45–90 minutes for a full kernel build on four cores.
 | `kernel/01-build-kernel.sh` | build host | Clones the Pi kernel, merges the config fragment, builds, packages a tarball |
 | `kernel/sdr-rt.config` | — | Kernel config fragment: the options KosmOS changes from `bcm2712_defconfig` |
 | `kernel/install-kernel.sh` | Pi | Installs the kernel, DTBs, overlays and cmdline into their own boot directory |
-| `userspace/02-post-install.sh` | Pi | Verifies the running kernel, then installs benchmark and SDR tooling |
+| `userspace/02-post-install.sh` | Pi | Sequencer — runs the four scripts below in order |
+| `userspace/02a-verify-kernel.sh` | Pi | Verifies the running kernel. Read-only; installs nothing |
+| `userspace/02b-bench-tools.sh` | Pi | `rt-tests` + `stress-ng` for the latency benchmark |
+| `userspace/02c-sdr-userspace.sh` | Pi | Builds librtlsdr, rtl_433, dump1090, predict |
+| `userspace/02d-locale-ru.sh` | Pi | Optional Russian locale (personal preference) |
 
-Both Pi-side scripts are copied into the kernel tarball by the build, so they
+Every Pi-side script is copied into the kernel tarball by the build, so they
 arrive on the Pi alongside the kernel payload — you do not transfer them separately.
 `ROADMAP.md` holds the project vision, phase plan and target layout.
+
+`02a`–`02d` each run standalone. `02-post-install.sh` exists so that one command
+still does the whole sequence, and because that is the name the build packages and
+the docs have always pointed at.
 
 ## Usage
 
@@ -137,7 +145,13 @@ activate full dynticks on CPUs 1–3, leaving CPU 0 as the housekeeping core. Se
 
 It first checks the running kernel — version string, `/sys/kernel/realtime`, timer
 frequency, CPU governor, USB, whether `ax25` loads — and prints a pass/fail summary.
-Nothing is installed before that, so it is safe to run just for the checks.
+Nothing is installed before that, so it is safe to run just for the checks. That
+stage is `02a-verify-kernel.sh` and can be run on its own, on any kernel, as often
+as you like:
+
+```bash
+~/kosmos-kernel/02a-verify-kernel.sh
+```
 
 It then offers two installs independently, each with its own prompt:
 
@@ -241,10 +255,10 @@ runtime footprint. Re-enable any of them as modules if you need them.
 
 ## Optional: Russian locale
 
-`userspace/02-post-install.sh` ends by setting the system locale to `ru_RU.UTF-8` and
-installing Cyrillic fonts and Russian man pages. This is a personal preference of the
-author's rather than anything SDR-related, and it is safe to remove — delete step 7
-from the script, or undo it afterwards:
+`userspace/02d-locale-ru.sh` sets the system locale to `ru_RU.UTF-8` and installs
+Cyrillic fonts and Russian man pages. This is a personal preference of the author's
+rather than anything SDR-related, and it is safe to remove — delete the script and
+its line in `02-post-install.sh`, or undo it afterwards:
 
 ```bash
 sudo localectl set-locale LANG=en_US.UTF-8
@@ -257,9 +271,9 @@ stay in English regardless.
 ## Status and caveats
 
 - The kernel build, install and rollback paths are the mature part of this repo.
-- `userspace/02-post-install.sh` builds several tools from `git clone` of upstream `HEAD` with
-  no pinned revisions, so an upstream change can break it. If a build step fails, it
-  is worth checking that project's recent commits.
+- `userspace/02c-sdr-userspace.sh` builds several tools from `git clone` of upstream
+  `HEAD` with no pinned revisions, so an upstream change can break it. If a build step
+  fails, it is worth checking that project's recent commits.
 - `predict` is compiled via its own curses installer rather than a standard `make
   install`, so it needs `libncurses-dev` present.
 - `gpredict` is skipped automatically on a headless system.

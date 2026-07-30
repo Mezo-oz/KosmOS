@@ -645,10 +645,16 @@ as the `git mv`.
   up (SC2034) — it was dead, and adding an `output/` directory would have changed
   the artifact path the README documents. Still needs a CI gate in Phase 4 so it
   stays at zero.
-- **File-size headroom is thin.** After the reorg, `install-kernel.sh` and
-  `02-post-install.sh` sit within ~35 lines of the 400-line cap. The latter does
-  four jobs (verify, benchmark tooling, SDR userspace, locale) and is the
-  natural first split.
+- ~~**File-size headroom is thin.**~~ ✅ **`02-post-install.sh` is split.** It did
+  four jobs (verify, benchmark tooling, SDR userspace, locale) in 399 lines, one
+  under the cap. Now a 96-line sequencer over `02a-verify-kernel.sh` (187),
+  `02b-bench-tools.sh` (47), `02c-sdr-userspace.sh` (148) and
+  `02d-locale-ru.sh` (63), each runnable standalone. Behaviour through the
+  sequencer is unchanged, including the inherited quirk that declining the SDR
+  install also skips the locale step — 02c signals that with exit code 3.
+  `install-kernel.sh` (366) and `01-build-kernel.sh` (371) are still the two
+  files near the cap; neither does more than one job, so neither is a natural
+  split yet.
 - **Retrofit version pins into `02-post-install.sh`** — four projects still
   clone unpinned upstream `HEAD`, which is what keeps Pillar 3 a commitment
   rather than a fact.

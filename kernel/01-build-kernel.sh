@@ -34,7 +34,7 @@ set -euo pipefail  # Exit on error, undefined vars, pipe failures
 # cloned anywhere:
 #
 #   SELF_DIR  = kernel/    — this script, sdr-rt.config, install-kernel.sh
-#   REPO_ROOT = the repo   — needed because 02-post-install.sh lives in
+#   REPO_ROOT = the repo   — needed because the post-install scripts live in
 #                            userspace/, not beside this script
 #
 # Both are packaged into the kernel tarball, so both paths must be right or the
@@ -308,15 +308,25 @@ echo "$KERNEL_VERSION" > "$PACKAGE_DIR/kernel-version"
 # Include the Pi-side scripts in the package.
 # Without these the tarball contains only the kernel payload, so the documented
 # next step -- extract, then run install-kernel.sh from the extracted directory
-# -- had nothing to run, and both scripts had to be copied over separately.
+# -- had nothing to run, and every script had to be copied over separately.
 # They come from two different directories after the repo reorganisation:
-# install-kernel.sh sits beside this script in kernel/, while 02-post-install.sh
-# lives in userspace/. Both are flattened into the package root, so the Pi-side
-# layout is unchanged -- install-kernel.sh still resolves its own directory at
-# runtime and finds boot/ and modules/ beside it.
+# install-kernel.sh sits beside this script in kernel/, while the post-install
+# set lives in userspace/. All of them are flattened into the package root, so
+# the Pi-side layout is unchanged -- install-kernel.sh still resolves its own
+# directory at runtime and finds boot/ and modules/ beside it, and
+# 02-post-install.sh finds its four job scripts beside it.
+#
+# 02-post-install.sh is a sequencer: without 02a-02d it exits with a diagnostic
+# and installs nothing. Dropping one of them here would ship a tarball that
+# looks complete and fails on the Pi, so the loop below hard-fails on any
+# missing entry rather than warning.
 PI_SIDE_SCRIPTS=(
     "$SELF_DIR/install-kernel.sh"
     "$REPO_ROOT/userspace/02-post-install.sh"
+    "$REPO_ROOT/userspace/02a-verify-kernel.sh"
+    "$REPO_ROOT/userspace/02b-bench-tools.sh"
+    "$REPO_ROOT/userspace/02c-sdr-userspace.sh"
+    "$REPO_ROOT/userspace/02d-locale-ru.sh"
 )
 
 for src in "${PI_SIDE_SCRIPTS[@]}"; do
