@@ -113,10 +113,19 @@ shell/Python:
 4. **No unbounded loops** — every retry/wait loop has a timeout or max
    iteration count (rule 2)
 5. **shellcheck clean at zero warnings** — the analog of rule 10 ("all
-   warnings on, all warnings fixed"); CI-gate this in Phase 4.
+   warnings on, all warnings fixed").
    **Verified at zero 2026-07-29** (shellcheck 0.9.0 on Linux and 0.11.0
    locally, both agreeing on the same 11 findings before the fix; zero after,
    including at `-S style`)
+   ✅ **CI-gated** — `.github/workflows/shellcheck.yml` runs `shellcheck -S style`
+   over every tracked `*.sh` on push and pull request, at a **pinned** shellcheck
+   version verified by SHA-256. Pinning matters: a runner-provided shellcheck
+   drifts with the image, so a new release adding a check would fail an unchanged
+   tree for no reason visible in the diff. Rules 1 and the `.gitattributes` CRLF
+   invariant are gated in the same workflow.
+   No `-x` and no `disable=` directives anywhere in the tree — that is why the
+   scripts duplicate a small amount of helper code rather than sourcing a shared
+   library, which would need `--external-sources` to stay clean.
 6. **Smallest scope** — `local` inside functions, globals only when
    deliberate and named LIKE_THIS (rule 6)
 7. **Pin every version, checksum every download** — Pillar 3's mechanics
@@ -684,8 +693,7 @@ as the `git mv`.
   `$(nproc)` quoted (SC2046 ×3), `read -r` everywhere (SC2162 ×4), `ls` replaced
   with `find` (SC2012 ×3), and the unused `OUTPUT_DIR` deleted rather than wired
   up (SC2034) — it was dead, and adding an `output/` directory would have changed
-  the artifact path the README documents. Still needs a CI gate in Phase 4 so it
-  stays at zero.
+  the artifact path the README documents. ✅ **Now CI-gated** so it stays at zero.
 - ~~**File-size headroom is thin.**~~ ✅ **`02-post-install.sh` is split.** It did
   four jobs (verify, benchmark tooling, SDR userspace, locale) in 399 lines, one
   under the cap. Now a 96-line sequencer over `02a-verify-kernel.sh` (187),

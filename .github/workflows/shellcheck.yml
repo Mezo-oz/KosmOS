@@ -1,0 +1,158 @@
+# ============================================================================
+# KosmOS — shellcheck CI gate
+# ============================================================================
+# ROADMAP engineering standard 5: "shellcheck clean at zero warnings — the analog
+# of NASA rule 10 (all warnings on, all warnings fixed)". It was verified by hand
+# on 2026-07-29 and stayed clean because someone remembered to check. This is
+# what keeps it there.
+#
+# The gate is shellcheck at -S style, which is the strictest setting and the one
+# the tree was verified at. Any finding fails the build.
+#
+# THE SHELLCHECK VERSION IS PINNED, and that is not incidental. A runner-provided
+# shellcheck drifts with the image, so a new release adding a check would fail an
+# unchanged tree on a Tuesday for no reason anybody could see in the diff. Pinning
+# it means the gate only moves when someone moves it. The release tarball is a
+# static asset, so unlike a git clone it has a meaningful SHA-256 -- checked
+# below, because a pin nobody verifies is a version number, not a pin.
+#
+# Two smaller gates ride along, both enforcing rules this project already states
+# rather than new ones:
+#
+#   - no shell script escapes the lint by not being named *.sh
+#   - no CR bytes in tracked text files, which .gitattributes exists to prevent
+#     (a CRLF shebang dies with "bad interpreter", and merge_config.sh carries
+#     the \r into config values)
+#   - no shell script over 400 lines, which is engineering standard 1
+#
+# Delete any of those steps if they get in the way; the shellcheck step is the
+# one that matters.
+# ============================================================================
+
+name: shellcheck
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  shellcheck:
+    name: shellcheck -S style
+    runs-on: ubuntu-latest
+
+    env:
+      SHELLCHECK_VERSION: v0.10.0
+      SHELLCHECK_SHA256: 6c881ab0698e4e6ea235245f22832860544f17ba386442fe7e9d629f8cbedf87
+      MAX_SCRIPT_LINES: 400
+
+    steps:
+      # Pinned to the commit behind v4 rather than the moving tag: a tag can be
+      # repointed, and this action runs with access to the checkout.
+      - name: Check out
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install pinned shellcheck
+        run: |
+          set -euo pipefail
+          tarball="shellcheck-${SHELLCHECK_VERSION}.linux.x86_64.tar.xz"
+          url="https://github.com/koalaman/shellcheck/releases/download/${SHELLCHECK_VERSION}/${tarball}"
+
+          curl -fsSL -o "$tarball" "$url"
+          echo "${SHELLCHECK_SHA256}  ${tarball}" | sha256sum -c -
+
+          tar -xJf "$tarball"
+          sudo install -m 0755 \
+            "shellcheck-${SHELLCHECK_VERSION}/shellcheck" /usr/local/bin/shellcheck
+
+          shellcheck --version
+
+      - name: Every shell script is named *.sh
+        run: |
+          set -euo pipefail
+          # The lint step globs *.sh. This makes that convention a gate instead
+          # of an assumption -- otherwise a script named without the suffix is
+          # silently never checked.
+          offenders=""
+          while IFS= read -r f; do
+            case "$f" in
+              *.sh) continue ;;
+            esac
+            [ -f "$f" ] || continue
+            if head -n1 -- "$f" | grep -Eq '^#!.*[/ ](ba|da|k|z|a)?sh([[:space:]]|$)'; then
+              offenders="${offenders}${f}"$'\n'
+            fi
+          done < <(git ls-files)
+
+          if [ -n "$offenders" ]; then
+            echo "These tracked files have a shell shebang but are not named *.sh," >&2
+            echo "so the shellcheck step below would skip them:" >&2
+            printf '%s' "$offenders" >&2
+            exit 1
+          fi
+          echo "ok — no unnamed shell scripts"
+
+      - name: shellcheck
+        run: |
+          set -euo pipefail
+          mapfile -t scripts < <(git ls-files '*.sh')
+
+          if [ "${#scripts[@]}" -eq 0 ]; then
+            echo "no shell scripts found — that is almost certainly wrong" >&2
+            exit 1
+          fi
+
+          printf 'checking %d script(s):\n' "${#scripts[@]}"
+          printf '  %s\n' "${scripts[@]}"
+          echo ""
+
+          # -S style is the strictest severity and the one the tree was verified
+          # at. No -x and no disable directives anywhere in the tree: sourcing a
+          # library would need --external-sources to stay clean, so the scripts
+          # are deliberately self-contained instead.
+          shellcheck -S style "${scripts[@]}"
+          echo "shellcheck: zero findings"
+
+      - name: No CRLF in tracked text files
+        run: |
+          set -euo pipefail
+          offenders=""
+          while IFS= read -r f; do
+            case "$f" in
+              # Only the files where a CR actually breaks something. Markdown is
+              # deliberately not here: a CRLF in prose is harmless, and gating on
+              # it would fail for anyone working from a Windows checkout.
+              *.sh|*.config|*.service|*.yml|*.yaml|*.py|*.txt|*.cmake) ;;
+              *) continue ;;
+            esac
+            [ -f "$f" ] || continue
+            if grep -qU $'\r' -- "$f"; then
+              offenders="${offenders}${f}"$'\n'
+            fi
+          done < <(git ls-files)
+
+          if [ -n "$offenders" ]; then
+            echo "CR bytes found in:" >&2
+            printf '%s' "$offenders" >&2
+            echo "See .gitattributes — a CRLF shebang dies with 'bad interpreter'." >&2
+            exit 1
+          fi
+          echo "ok — no CR bytes"
+
+      - name: No script over ${{ env.MAX_SCRIPT_LINES }} lines
+        run: |
+          set -euo pipefail
+          rc=0
+          while IFS= read -r f; do
+            n=$(wc -l < "$f")
+            if [ "$n" -gt "$MAX_SCRIPT_LINES" ]; then
+              printf '%-40s %5d lines — over the %s-line cap\n' \
+                "$f" "$n" "$MAX_SCRIPT_LINES" >&2
+              rc=1
+            else
+              printf '%-40s %5d\n' "$f" "$n"
+            fi
+          done < <(git ls-files '*.sh')
+          exit "$rc"
