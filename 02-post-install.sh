@@ -54,9 +54,14 @@ fi
 
 # --- Timer Frequency ---
 echo -n "Timer frequency:      "
-HZ=$(grep "CONFIG_HZ=" /proc/config.gz 2>/dev/null | head -1 || \
-     zcat /proc/config.gz 2>/dev/null | grep "CONFIG_HZ=" | head -1 || \
-     echo "unknown")
+# /proc/config.gz is gzip, so it must be decompressed -- the previous first
+# attempt grepped the compressed bytes directly, which can never match. Requires
+# CONFIG_IKCONFIG_PROC, now set in sdr-rt.config.
+if [ -f /proc/config.gz ]; then
+    HZ=$(zcat /proc/config.gz 2>/dev/null | grep "^CONFIG_HZ=" | head -1 || echo "unknown")
+else
+    HZ="unavailable (no /proc/config.gz)"
+fi
 if echo "$HZ" | grep -q "1000"; then
     echo -e "1000 Hz ${GREEN}[OK]${NC}"
     PASS=$((PASS + 1))
@@ -87,11 +92,15 @@ fi
 
 # --- AX.25 Module ---
 echo -n "AX.25 module:         "
-if modprobe ax25 2>/dev/null; then
+# Needs sudo: loading a module is privileged, and the rest of this script runs
+# unprivileged. Without sudo this always failed and reported "may need to
+# rebuild" on kernels where AX.25 was present and fine -- a false negative on
+# one of the features the project advertises.
+if sudo modprobe ax25 2>/dev/null; then
     echo -e "${GREEN}[OK - loaded]${NC}"
     PASS=$((PASS + 1))
     # Clean up — unload it for now
-    rmmod ax25 2>/dev/null || true
+    sudo rmmod ax25 2>/dev/null || true
 else
     echo -e "${YELLOW}[not available - may need to rebuild]${NC}"
 fi

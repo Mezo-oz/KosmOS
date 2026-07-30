@@ -49,6 +49,58 @@ PACKAGE_DIR="$BUILD_DIR/kosmos-kernel-pkg"
 # On 4GB VM RAM, use $(nproc). If you get OOM kills, drop to 2.
 JOBS=$(nproc)
 
+# Gate the build on the options that define this kernel.
+#
+# merge_config.sh warns about options whose dependencies are unmet and then
+# carries on, and menuconfig lets you toggle anything back off by accident. Both
+# failure modes are silent: you would spend 45-90 minutes building, install,
+# reboot, and only find out at the post-install check that PREEMPT_RT never made
+# it in -- at which point the entire point of the kernel is gone and the only
+# remedy is to build again.
+#
+# Called twice: once after the merge (so a dependency problem is diagnosed
+# immediately) and once after menuconfig (so the state actually compiled is the
+# state verified).
+verify_critical_config() {
+    local when="$1"
+    local failed=0
+
+    echo ""
+    echo "       Verifying critical options ($when)..."
+
+    for opt in CONFIG_PREEMPT_RT=y CONFIG_HZ_1000=y CONFIG_IKCONFIG_PROC=y; do
+        if grep -qx -- "$opt" .config; then
+            echo "         $opt"
+        else
+            echo "         MISSING: $opt"
+            failed=1
+        fi
+    done
+
+    if [ "$failed" -ne 0 ]; then
+        echo ""
+        echo "ERROR: required options are missing from .config ($when)."
+        echo "       Building now would produce a kernel that does not do what"
+        echo "       KosmOs claims, and nothing would tell you until after the"
+        echo "       install and reboot."
+        echo ""
+        echo "       Inspect with:  grep -E 'PREEMPT|CONFIG_HZ|IKCONFIG' .config"
+        echo "       An unmet dependency in the kernel branch or defconfig is the"
+        echo "       usual cause when this fails right after the merge."
+        exit 1
+    fi
+
+    # A string option, so it needs its own test rather than the loop above.
+    # Non-fatal: the kernel still works, it just is not identifiable.
+    if ! grep -q '^CONFIG_LOCALVERSION="-kosmos"' .config; then
+        echo ""
+        echo "       WARNING: CONFIG_LOCALVERSION is not \"-kosmos\". The build will"
+        echo "                work, but uname -r will not identify this kernel as"
+        echo "                KosmOs and 02-post-install.sh will report a failed"
+        echo "                version check."
+    fi
+}
+
 echo "============================================"
 echo "  KosmOs Kernel Build for Raspberry Pi 5"
 echo "============================================"
@@ -64,7 +116,7 @@ echo "[1/7] Installing build dependencies..."
 sudo apt-get update
 sudo apt-get install -y \
     git bc bison flex libssl-dev \
-    libncurses5-dev libncurses-dev \
+    libncurses-dev \
     libelf-dev dwarves \
     build-essential \
     kmod cpio \
@@ -129,6 +181,8 @@ fi
 # The -m flag tells it to merge (not replace) with the existing .config
 ./scripts/kconfig/merge_config.sh -m .config "$FRAGMENT_PATH"
 
+verify_critical_config "after merge_config.sh"
+
 # === STEP 5: Interactive Review ===
 # menuconfig lets you see what we've changed and make your own tweaks.
 # Every SDR-related option from our fragment will already be set.
@@ -152,6 +206,9 @@ echo ""
 read -p "       Press Enter to open menuconfig..."
 
 make menuconfig
+
+# Re-verify: this is the state that will actually be compiled.
+verify_critical_config "after menuconfig, before build"
 
 # === STEP 6: Build Everything ===
 # This is the big one. On a 4-core ARM64 VM with 4GB RAM, expect:
@@ -196,7 +253,15 @@ echo "       Build finished at: $(date)"
 echo ""
 echo "[7/7] Packaging kernel for transfer..."
 
-KERNEL_VERSION=$(make kernelrelease)
+# -s and tail -1: without them this captures anything else make writes to stdout
+# (a syncconfig run, "Entering directory" chatter), which would then poison both
+# the tarball name and the kernel-version file the installer depends on.
+KERNEL_VERSION=$(make -s kernelrelease | tail -1)
+
+if [ -z "$KERNEL_VERSION" ]; then
+    echo "ERROR: could not determine kernel version from 'make kernelrelease'."
+    exit 1
+fi
 echo "       Kernel version: $KERNEL_VERSION"
 
 rm -rf "$PACKAGE_DIR"

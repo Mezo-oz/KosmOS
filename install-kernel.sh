@@ -72,7 +72,37 @@ if [ ! -f "$SCRIPT_DIR/boot/kernel-kosmos.img" ]; then
     exit 1
 fi
 
-KERNEL_VERSION=$(cat "$SCRIPT_DIR/kernel-version" 2>/dev/null || echo "unknown")
+# Fail here rather than defaulting to a placeholder.
+#
+# This used to fall back to the literal string "unknown", which is not a real
+# kernel version -- so "depmod unknown" later in the script failed under set -e
+# *after* the modules had been copied but *before* config.txt was updated. That
+# leaves a half-installed state: modules on disk, boot config untouched, and an
+# error message pointing at depmod rather than at the missing file.
+if [ ! -f "$SCRIPT_DIR/kernel-version" ]; then
+    echo -e "${RED}ERROR: kernel-version not found in $SCRIPT_DIR${NC}"
+    echo "       The package is incomplete. Re-extract the tarball, or rebuild"
+    echo "       it with 01-build-kernel.sh."
+    exit 1
+fi
+
+KERNEL_VERSION=$(tr -d '[:space:]' < "$SCRIPT_DIR/kernel-version")
+
+if [ -z "$KERNEL_VERSION" ]; then
+    echo -e "${RED}ERROR: kernel-version is empty.${NC}"
+    echo "       Rebuild the package with 01-build-kernel.sh."
+    exit 1
+fi
+
+# The modules directory must match the version string, or depmod builds a
+# dependency map for a kernel that will never boot with these modules.
+if [ ! -d "$SCRIPT_DIR/modules/lib/modules/$KERNEL_VERSION" ]; then
+    echo -e "${RED}ERROR: no module directory for $KERNEL_VERSION${NC}"
+    echo "       Expected: $SCRIPT_DIR/modules/lib/modules/$KERNEL_VERSION"
+    echo "       Found:    $(ls "$SCRIPT_DIR/modules/lib/modules/" 2>/dev/null | tr '\n' ' ')"
+    exit 1
+fi
+
 echo "Kernel version:   $KERNEL_VERSION"
 echo ""
 
