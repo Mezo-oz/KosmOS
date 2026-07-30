@@ -109,22 +109,58 @@ isolated before any published number is generated.
 
 ### Benchmark Integrity Prerequisites (do these FIRST)
 
-- [ ] **Isolate the kernels with `os_prefix=`** — install-kernel.sh currently
-  overwrites the shared DTBs/overlays in the boot partition, so the "stock"
-  kernel boots against KosmOs device trees. That contaminates the A/B and
-  weakens the rollback story. Fix before numbers, not after.
-- [ ] **Settle the tickless claim** — `CONFIG_NO_HZ_FULL=y` is compiled but inert
-  without `nohz_full=<cpulist>` in cmdline.txt. Either enable it (and dedicate
-  isolated CPUs for the SDR process) or drop "tickless" from the claims table.
-  No overclaims in a published benchmark.
-- [ ] **Make verification possible** — add `CONFIG_IKCONFIG` +
-  `CONFIG_IKCONFIG_PROC` so `/proc/config.gz` exists and the two kernels'
-  configs can be *proven* to differ in exactly the claimed ways.
-- [ ] **Rebuild with `CONFIG_LOCALVERSION="-kosmos"`** — current installed kernel
-  reports plain `6.12.79-v8-16k+`, indistinguishable from stock by `uname -r`.
-  Rebuild also separates the module directories.
-- [ ] **Install the tooling** — `rt-tests` (cyclictest) and `stress-ng` are
-  installed by no script yet; add to a deps step.
+- [x] **Isolate the kernels with `os_prefix=`** — *done, `43d8368`.* Kernel, DTBs,
+  overlays and cmdline.txt now live in their own boot-partition directory;
+  `config.txt` is the only stock file modified, and it is written last, after
+  every required file is confirmed present. Revert is a verified byte-identical
+  restore.
+- [x] **Settle the tickless claim** — *done, `43d8368`.* `nohz_full` and
+  `rcu_nocbs` are appended to the KosmOs command line, default CPUs 1-3 with
+  CPU 0 left as housekeeping. Configurable via `NOHZ_FULL_CPUS`, which the
+  benchmark matrix below relies on.
+- [x] **Make verification possible** — *done, `147fa10`.* `CONFIG_IKCONFIG` +
+  `CONFIG_IKCONFIG_PROC` added, and the `/proc/config.gz` read fixed (it was
+  grepping the compressed bytes, which can never match).
+- [ ] **Rebuild with `CONFIG_LOCALVERSION="-kosmos"`** — config is set (`281cf0d`)
+  but **the rebuild has not happened**, so the installed kernel still reports
+  plain `6.12.79-v8-16k+`. Until then the version check in 02-post-install.sh
+  reports FAIL on the running kernel; that is expected, not a regression.
+  Rebuild + reinstall happens at step 9, and also separates the module
+  directories.
+- [x] **Install the tooling** — *done, `43d8368`.* `rt-tests` and `stress-ng`
+  added behind their own prompt in 02-post-install.sh, deliberately separate
+  from the SDR userspace install so Test 1 can run without building a toolchain
+  it does not need.
+
+### Configuration Matrix (decided 2026-07-29)
+
+Three boot configurations, so each change is attributable to exactly one cause:
+
+| Config | Kernel | `NOHZ_FULL_CPUS` | What it isolates |
+|---|---|---|---|
+| **A** | stock Pi kernel | n/a | baseline |
+| **B** | KosmOs (PREEMPT_RT) | `""` | RT with no core isolation |
+| **C** | KosmOs (PREEMPT_RT) | `"1-3"` | RT plus full dynticks |
+
+**Report `B − A` as the PREEMPT_RT result. Report `C − B` as the isolation
+result. Never report `C − A`** — that conflates two independent changes into one
+number and attributes the combined effect to whichever is being argued for.
+
+**In config C, `cyclictest` must be pinned to the isolated cores.** Unpinned it
+will schedule on CPU 0, the housekeeping core, which is not tickless — so config
+C measures config B and the isolation delta reads as zero. Use either:
+
+```bash
+taskset -c 1-3 cyclictest -l1000000 -m -S -p90 -i200 -h400 -q
+# or cyclictest's own affinity flag:
+cyclictest -a 1-3 -l1000000 -m -S -p90 -i200 -h400 -q
+```
+
+Switching between B and C means editing `NOHZ_FULL_CPUS` in `install-kernel.sh`
+and re-running it, or editing `kosmos/cmdline.txt` on the boot partition
+directly. Switching between A and B/C means commenting the two directives in the
+KosmOs block of `config.txt`. Nothing else differs between any of the three
+boots — that is what `os_prefix` bought.
 
 ### Methodology
 
@@ -173,14 +209,16 @@ positioning leans harder on pillars 2 and 3.
 
 ✅ Custom kernel `6.12.79-v8-16k+` with `PREEMPT_RT`
 ✅ Real-time scheduling (1000Hz tick, high-res timers)
-⚠️ Tickless idle (`CONFIG_NO_HZ_FULL`) — compiled but **inert**: needs
-   `nohz_full=` in cmdline.txt (see benchmark prerequisites)
-⚠️ Kernel version string carries no project marker — `CONFIG_LOCALVERSION`
-   wasn't set on the installed build; fixed going forward (`-kosmos`), needs
-   a rebuild to take effect
+✅ Full dynticks (`CONFIG_NO_HZ_FULL`) — **activated** `43d8368`: `nohz_full` and
+   `rcu_nocbs` now on the KosmOs command line (CPUs 1-3 by default). Was
+   compiled but inert before that.
+⏳ Kernel version string — `CONFIG_LOCALVERSION="-kosmos"` is set in the fragment
+   but **the installed kernel predates it**, so `uname -r` still reports plain
+   `6.12.79-v8-16k+`. Takes effect on the step-9 rebuild.
 ✅ Performance CPU governor (always max clock)
 ✅ AX.25 / amateur radio / packet radio stack compiled as modules
-   (⚠️ verify check needs `sudo modprobe` — currently a false negative)
+   (verify check fixed `147fa10` — it ran `modprobe` without `sudo` and reported
+   a false negative on kernels where AX.25 was fine)
 ✅ RTL-SDR driver stack (RTL2832 SDR + R820T tuner)
 ✅ USB subsystem optimized for SDR hardware
 ✅ Stripped unnecessary subsystems (GPU drivers, NFC, BT, ISDN, etc.)
@@ -192,8 +230,9 @@ positioning leans harder on pillars 2 and 3.
    target `~/.predict/predict.tle`)
 ✅ Russian locale (ru_RU.UTF-8) — **optional/skippable personal config**, not a
    core feature (README has it right; this doc previously overclaimed it)
-⚠️ Dual-boot (stock kernel preserved) — but installer overwrites shared
-   DTBs/overlays, so isolation isn't complete until `os_prefix=` lands
+✅ Dual-boot, now genuinely isolated — `os_prefix=` landed `43d8368`. Stock
+   kernel, DTBs, overlays and cmdline.txt are all left byte-identical; only
+   `config.txt` is touched, and revert is a verified exact restore
 ✅ Build kit on GitHub (kernel build script, config fragment, installer, post-install)
 
 ---
@@ -499,26 +538,42 @@ as the `git mv`.
 
 **Do first — cheap, everything downstream depends on them:**
 1. ~~Settle C vs K~~ ✅ **K** — KosmOs
-2. Commit this ROADMAP.md into the repo (it's referenced by the target
-   structure but isn't tracked)
-3. Fix the verification layer: `CONFIG_IKCONFIG` + `IKCONFIG_PROC`,
-   `sudo modprobe ax25`, post-merge `grep -q '^CONFIG_PREEMPT_RT=y'` gate
-4. Fix `depmod unknown`, drop `libncurses5-dev` (both abort a fresh run)
+2. ~~Commit this ROADMAP.md into the repo~~ ✅ `0aa90fc`, updated `9280900`
+3. ~~Fix the verification layer~~ ✅ `147fa10` — `CONFIG_IKCONFIG` +
+   `IKCONFIG_PROC`, `sudo modprobe ax25`, and a `verify_critical_config()` gate
+   that runs both after `merge_config.sh` and after `menuconfig`, so the state
+   compiled is the state verified. Uses `grep -qx`, so `CONFIG_PREEMPT_RT_FULL`
+   does not satisfy `CONFIG_PREEMPT_RT`.
+4. ~~Fix `depmod unknown`, drop `libncurses5-dev`~~ ✅ `147fa10`. Also
+   `make -s kernelrelease | tail -1`, so stray make output cannot poison the
+   tarball name or the version file the installer reads.
 
 **Before generating any benchmark numbers:**
-5. `os_prefix=` for genuinely isolated kernel+DTB sets (protects the A/B,
-   makes rollback true)
-6. Add `nohz_full=` to cmdline.txt, or drop "tickless" from claims
-7. Add `rt-tests` + `stress-ng` to a deps step
+5. ~~`os_prefix=` for genuinely isolated kernel+DTB sets~~ ✅ `43d8368`
+6. ~~Add `nohz_full=` to cmdline.txt~~ ✅ `43d8368` — plus `rcu_nocbs`
+7. ~~Add `rt-tests` + `stress-ng`~~ ✅ `43d8368`
 
 **Then:**
-8. Reorganize repo into target structure — single commit, `git mv`, update
-   $REPO_DIR paths in the packaging step in the same commit
-9. **v0.25: run the benchmark** (Test 1 this week — no dongle needed;
-   Test 2 the day the RTL-SDR v4 arrives)
+8. ~~Reorganize repo into target structure~~ ✅ — single commit, `git mv` with the
+   packaging paths updated alongside
+9. **v0.25: rebuild, reinstall, run the benchmark.** The rebuild is required
+   first: it is what makes `CONFIG_LOCALVERSION` take effect and what puts the
+   `os_prefix` layout on the boot partition. Then the three-config matrix above
+   (Test 1 needs no dongle; Test 2 the day the RTL-SDR v4 arrives).
 10. Order the RTL-SDR Blog v4 + dipole antenna kit (if not already)
 11. Build `03-satcom-stack.sh` — pinned from line one
 12. First NOAA APT capture using SatDump
+
+**Carried forward from the audit, not yet scheduled:**
+- **shellcheck has never been run** on any script — rule 5 of the Engineering
+  Standards is unverified, not met. Needs a Linux host with `shellcheck`.
+- **File-size headroom is thin.** After the reorg, `install-kernel.sh` and
+  `02-post-install.sh` sit within ~35 lines of the 400-line cap. The latter does
+  four jobs (verify, benchmark tooling, SDR userspace, locale) and is the
+  natural first split.
+- **Retrofit version pins into `02-post-install.sh`** — four projects still
+  clone unpinned upstream `HEAD`, which is what keeps Pillar 3 a commitment
+  rather than a fact.
 
 ---
 
