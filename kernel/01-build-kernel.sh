@@ -30,10 +30,20 @@
 
 set -euo pipefail  # Exit on error, undefined vars, pipe failures
 
-# Where this script and its sibling files (sdr-rt.config, install-kernel.sh,
-# 02-post-install.sh) actually live. Resolved from the script's own path so the
-# repo can be cloned anywhere.
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Two separate locations, resolved from the script's own path so the repo can be
+# cloned anywhere:
+#
+#   SELF_DIR  = kernel/    — this script, sdr-rt.config, install-kernel.sh
+#   REPO_ROOT = the repo   — needed because 02-post-install.sh lives in
+#                            userspace/, not beside this script
+#
+# Both are packaged into the kernel tarball, so both paths must be right or the
+# tarball silently ships without its installer.
+#
+# Deliberately not named KERNEL_DIR: that is already the kernel *source* tree
+# ($BUILD_DIR/linux) further down, and confusing the two would be easy.
+SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SELF_DIR/.." && pwd)"
 
 # === CONFIGURATION ===
 # Change these if you want a different kernel branch or build directory
@@ -169,7 +179,7 @@ echo "[4/7] Merging SDR/RT config fragment..."
 # (that is where the kernel source gets cloned); it is not where the repo
 # lives. Deriving the path from $HOME/kosmos meant the script only worked if
 # you had copied the repo to exactly that directory, and failed here otherwise.
-FRAGMENT_PATH="$REPO_DIR/sdr-rt.config"
+FRAGMENT_PATH="$SELF_DIR/sdr-rt.config"
 
 if [ ! -f "$FRAGMENT_PATH" ]; then
     echo "ERROR: Config fragment not found at $FRAGMENT_PATH"
@@ -294,9 +304,28 @@ echo "$KERNEL_VERSION" > "$PACKAGE_DIR/kernel-version"
 # Without these the tarball contains only the kernel payload, so the documented
 # next step -- extract, then run install-kernel.sh from the extracted directory
 # -- had nothing to run, and both scripts had to be copied over separately.
-cp "$REPO_DIR/install-kernel.sh" "$PACKAGE_DIR/"
-cp "$REPO_DIR/02-post-install.sh" "$PACKAGE_DIR/"
-chmod +x "$PACKAGE_DIR/install-kernel.sh" "$PACKAGE_DIR/02-post-install.sh"
+# They come from two different directories after the repo reorganisation:
+# install-kernel.sh sits beside this script in kernel/, while 02-post-install.sh
+# lives in userspace/. Both are flattened into the package root, so the Pi-side
+# layout is unchanged -- install-kernel.sh still resolves its own directory at
+# runtime and finds boot/ and modules/ beside it.
+PI_SIDE_SCRIPTS=(
+    "$SELF_DIR/install-kernel.sh"
+    "$REPO_ROOT/userspace/02-post-install.sh"
+)
+
+for src in "${PI_SIDE_SCRIPTS[@]}"; do
+    if [ ! -f "$src" ]; then
+        echo "ERROR: cannot package missing script: $src"
+        echo "       The repo layout may have changed without this path being"
+        echo "       updated. A tarball without its installer looks fine until"
+        echo "       you try to use it on the Pi."
+        exit 1
+    fi
+    cp "$src" "$PACKAGE_DIR/"
+    chmod +x "$PACKAGE_DIR/$(basename "$src")"
+    echo "       packaged $(basename "$src")"
+done
 
 # Create the tarball
 cd "$BUILD_DIR"

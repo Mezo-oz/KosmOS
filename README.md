@@ -6,7 +6,8 @@ radio and satellite reception.
 KosmOs is not a full distribution image. It is a set of scripts that build a custom
 `PREEMPT_RT` kernel from the Raspberry Pi kernel source, install it **alongside** the
 stock Raspberry Pi OS kernel, and set up an SDR userspace toolchain on top. Your
-existing install stays bootable; reverting means deleting one line from `config.txt`.
+existing install stays bootable: every stock boot file is left byte-identical, and
+reverting means deleting one marked block from `config.txt`.
 
 ## Why
 
@@ -50,10 +51,14 @@ Expect 45–90 minutes for a full kernel build on four cores.
 
 | File | Runs on | Purpose |
 |---|---|---|
-| `01-build-kernel.sh` | build host | Clones the Pi kernel, merges the config fragment, builds, packages a tarball |
-| `sdr-rt.config` | — | Kernel config fragment: the options KosmOs changes from `bcm2712_defconfig` |
-| `install-kernel.sh` | Pi | Installs the kernel, DTBs and modules alongside the stock kernel |
-| `02-post-install.sh` | Pi | Verifies the running kernel, then builds the SDR userspace tools |
+| `kernel/01-build-kernel.sh` | build host | Clones the Pi kernel, merges the config fragment, builds, packages a tarball |
+| `kernel/sdr-rt.config` | — | Kernel config fragment: the options KosmOs changes from `bcm2712_defconfig` |
+| `kernel/install-kernel.sh` | Pi | Installs the kernel, DTBs, overlays and cmdline into their own boot directory |
+| `userspace/02-post-install.sh` | Pi | Verifies the running kernel, then installs benchmark and SDR tooling |
+
+Both Pi-side scripts are copied into the kernel tarball by the build, so they
+arrive on the Pi alongside the kernel payload — you do not transfer them separately.
+`ROADMAP.md` holds the project vision, phase plan and target layout.
 
 ## Usage
 
@@ -64,12 +69,21 @@ On the ARM64 build host:
 ```bash
 git clone https://github.com/Mezo-oz/KosmOs
 cd KosmOs
-./01-build-kernel.sh
+./kernel/01-build-kernel.sh
 ```
 
+It can be run from anywhere — it resolves its own location, so `cd kernel && ./01-build-kernel.sh`
+works identically.
+
 The script installs build dependencies, shallow-clones `raspberrypi/linux` at branch
-`rpi-6.12.y`, loads `bcm2712_defconfig`, merges `sdr-rt.config` over it, then opens
-`menuconfig` so you can review the result before building. Worth confirming there:
+`rpi-6.12.y`, loads `bcm2712_defconfig`, merges `sdr-rt.config` over it, and then
+**hard-fails if `CONFIG_PREEMPT_RT`, `CONFIG_HZ_1000` or `CONFIG_IKCONFIG_PROC` did
+not survive the merge** — `merge_config.sh` drops options with unmet dependencies
+silently, and without that gate you would only find out after a 45–90 minute build,
+an install and a reboot.
+
+It then opens `menuconfig` so you can review the result, and re-runs the same check
+afterwards so the state compiled is the state verified. Worth confirming there:
 
 - `General setup → Preemption Model` → *Fully Preemptible Kernel (Real-Time)*
 - `Networking support → Amateur Radio support → AX.25` → `M`
@@ -113,7 +127,7 @@ failed install cannot leave you unable to boot.
 The KosmOs kernel command line is derived from the stock `cmdline.txt` — so `root=`
 and friends carry over unchanged — with `nohz_full` and `rcu_nocbs` appended to
 activate full dynticks on CPUs 1–3, leaving CPU 0 as the housekeeping core. Set
-`NOHZ_FULL_CPUS=""` at the top of `install-kernel.sh` to disable that.
+`NOHZ_FULL_CPUS=""` at the top of `kernel/install-kernel.sh` to disable that.
 
 ### 3. Verify and install SDR tools
 
@@ -151,7 +165,7 @@ cat /sys/kernel/realtime    # should print 1
 cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor   # performance
 ```
 
-`uname -r` is the reliable check: `sdr-rt.config` sets
+`uname -r` is the reliable check: `kernel/sdr-rt.config` sets
 `CONFIG_LOCALVERSION="-kosmos"`, so the version string is unambiguous. If it does not
 contain `kosmos`, you booted the stock kernel.
 
@@ -179,7 +193,7 @@ block to boot stock, and uncomment them to boot KosmOs.
 
 ## What the config fragment changes
 
-`sdr-rt.config` is a fragment, not a full config — it lists only what differs from
+`kernel/sdr-rt.config` is a fragment, not a full config — it lists only what differs from
 `bcm2712_defconfig`, and `merge_config.sh` resolves the dependencies. Each option is
 commented inline in the file.
 
@@ -227,7 +241,7 @@ runtime footprint. Re-enable any of them as modules if you need them.
 
 ## Optional: Russian locale
 
-`02-post-install.sh` ends by setting the system locale to `ru_RU.UTF-8` and
+`userspace/02-post-install.sh` ends by setting the system locale to `ru_RU.UTF-8` and
 installing Cyrillic fonts and Russian man pages. This is a personal preference of the
 author's rather than anything SDR-related, and it is safe to remove — delete step 7
 from the script, or undo it afterwards:
@@ -243,7 +257,7 @@ stay in English regardless.
 ## Status and caveats
 
 - The kernel build, install and rollback paths are the mature part of this repo.
-- `02-post-install.sh` builds several tools from `git clone` of upstream `HEAD` with
+- `userspace/02-post-install.sh` builds several tools from `git clone` of upstream `HEAD` with
   no pinned revisions, so an upstream change can break it. If a build step fails, it
   is worth checking that project's recent commits.
 - `predict` is compiled via its own curses installer rather than a standard `make
