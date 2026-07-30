@@ -30,27 +30,31 @@
 
 set -euo pipefail  # Exit on error, undefined vars, pipe failures
 
-# Two separate locations, resolved from the script's own path so the repo can be
-# cloned anywhere:
-#
-#   SELF_DIR  = kernel/    — this script, sdr-rt.config, install-kernel.sh
-#   REPO_ROOT = the repo   — needed because the post-install scripts live in
-#                            userspace/, not beside this script
-#
-# Both are packaged into the kernel tarball, so both paths must be right or the
-# tarball silently ships without its installer.
+# kernel/ — this script, sdr-rt.config, install-kernel.sh and package-kernel.sh.
+# Resolved from the script's own path so the repo can be cloned anywhere.
 #
 # Deliberately not named KERNEL_DIR: that is already the kernel *source* tree
 # ($BUILD_DIR/linux) further down, and confusing the two would be easy.
+# package-kernel.sh resolves the repo root for itself — it is the one that needs
+# to reach userspace/.
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SELF_DIR/.." && pwd)"
 
 # === CONFIGURATION ===
 # Change these if you want a different kernel branch or build directory
+KERNEL_URL="https://github.com/raspberrypi/linux.git"
 KERNEL_BRANCH="rpi-6.12.y"       # Latest Pi LTS branch with RT support
 BUILD_DIR="$HOME/kosmos"         # scratch workspace: kernel source + artifacts
 KERNEL_DIR="$BUILD_DIR/linux"        # kernel *source* tree (cloned here)
-PACKAGE_DIR="$BUILD_DIR/kosmos-kernel-pkg"
+# The staging directory and the tarball are package-kernel.sh's business; it
+# derives both from BUILD_DIR, which is passed to it as KOSMOS_BUILD_DIR.
+
+# Exact commit to build. Empty means "tip of $KERNEL_BRANCH", which is the
+# long-standing behaviour and which means two builds weeks apart are not the same
+# kernel. Set it at the v0.25 rebuild and put the same SHA in
+# benchmarks/BENCHMARKS.md: a published benchmark has to name the kernel it
+# measured. Either way the SHA actually built is captured below, printed, and
+# shipped in the package as kernel-commit.
+KERNEL_COMMIT=""
 
 # There was an OUTPUT_DIR="$BUILD_DIR/output" here. It was never referenced --
 # staged files go to PACKAGE_DIR and the finished tarball is written to
@@ -149,14 +153,40 @@ echo "       (This is ~1.5GB, may take a while)"
 mkdir -p "$BUILD_DIR"
 cd "$BUILD_DIR"
 
-if [ -d "$KERNEL_DIR" ]; then
+# When pinned, init+fetch rather than clone: cloning a branch gets today's tip,
+# which is exactly what a pin exists to prevent.
+EXISTING_SOURCE=0
+[ -d "$KERNEL_DIR" ] && EXISTING_SOURCE=1
+
+if [ "$EXISTING_SOURCE" -eq 0 ]; then
+    if [ -n "$KERNEL_COMMIT" ]; then
+        git -c init.defaultBranch=main init -q "$KERNEL_DIR"
+        git -C "$KERNEL_DIR" remote add origin "$KERNEL_URL"
+    else
+        git clone --depth 1 --branch "$KERNEL_BRANCH" "$KERNEL_URL" "$KERNEL_DIR"
+    fi
+fi
+cd "$KERNEL_DIR"
+
+if [ -n "$KERNEL_COMMIT" ]; then
+    echo "       Fetching pinned commit $KERNEL_COMMIT..."
+    git fetch -q --depth 1 origin "$KERNEL_COMMIT"
+    git checkout -q FETCH_HEAD
+elif [ "$EXISTING_SOURCE" -eq 1 ]; then
     echo "       Kernel source already exists, pulling latest..."
-    cd "$KERNEL_DIR"
     git pull
-else
-    git clone --depth 1 --branch "$KERNEL_BRANCH" \
-        https://github.com/raspberrypi/linux.git
-    cd "$KERNEL_DIR"
+fi
+
+KERNEL_SHA=$(git rev-parse HEAD)
+
+if [ -n "$KERNEL_COMMIT" ] && [ "$KERNEL_SHA" != "$KERNEL_COMMIT" ]; then
+    echo "ERROR: source tree is at $KERNEL_SHA, not the pinned $KERNEL_COMMIT" >&2
+    exit 1
+fi
+
+echo "       Kernel source commit: $KERNEL_SHA"
+if [ -z "$KERNEL_COMMIT" ]; then
+    echo "       (unpinned — this is the tip of $KERNEL_BRANCH as of right now)"
 fi
 
 # === STEP 3: Start From Pi 5 Default Config ===
@@ -257,115 +287,30 @@ make -j"$JOBS" dtbs
 echo ""
 echo "       Build finished at: $(date)"
 
+
 # === STEP 7: Package for Transfer ===
-# We now collect everything the Pi needs into a single tarball:
-#   - Image                    → goes to /boot/firmware/
-#   - modules (.ko files)      → go to /lib/modules/<version>/
-#   - dtbs and overlays        → go to /boot/firmware/
-#   - System.map               → kernel symbol table (for debugging)
-#
-# On the Pi, the install script will put each piece in the right place.
+# Handed to package-kernel.sh, which sits beside this script. It is separate so
+# that a repackage -- after editing a Pi-side script, say -- does not mean
+# another 90-minute build, and because packaging is not "build a kernel".
 echo ""
-echo "[7/7] Packaging kernel for transfer..."
+echo "[7/7] Packaging..."
 
-# -s and tail -1: without them this captures anything else make writes to stdout
-# (a syncconfig run, "Entering directory" chatter), which would then poison both
-# the tarball name and the kernel-version file the installer depends on.
-KERNEL_VERSION=$(make -s kernelrelease | tail -1)
-
-if [ -z "$KERNEL_VERSION" ]; then
-    echo "ERROR: could not determine kernel version from 'make kernelrelease'."
+if [ ! -f "$SELF_DIR/package-kernel.sh" ]; then
+    echo "ERROR: $SELF_DIR/package-kernel.sh is missing." >&2
+    echo "       The build succeeded but there is nothing to package it with." >&2
+    echo "       Everything is still in $KERNEL_DIR; restore the script and" >&2
+    echo "       run it directly rather than rebuilding." >&2
     exit 1
 fi
-echo "       Kernel version: $KERNEL_VERSION"
 
-rm -rf "$PACKAGE_DIR"
-mkdir -p "$PACKAGE_DIR"/{boot,modules}
+KOSMOS_BUILD_DIR="$BUILD_DIR" bash "$SELF_DIR/package-kernel.sh" "$KERNEL_DIR"
 
-# Copy kernel image
-# The Pi 5 bootloader looks for "kernel_2712.img" by default,
-# but we'll use a custom name and point config.txt at it.
-cp arch/arm64/boot/Image "$PACKAGE_DIR/boot/kernel-kosmos.img"
-
-# Install modules to our package directory
-# INSTALL_MOD_PATH tells make "pretend this is the root filesystem"
-make modules_install INSTALL_MOD_PATH="$PACKAGE_DIR/modules"
-
-# Copy device tree blobs
-cp arch/arm64/boot/dts/broadcom/bcm2712*.dtb "$PACKAGE_DIR/boot/"
-
-# Copy overlays (hardware configuration fragments)
-mkdir -p "$PACKAGE_DIR/boot/overlays"
-cp arch/arm64/boot/dts/overlays/*.dtbo "$PACKAGE_DIR/boot/overlays/" 2>/dev/null || true
-
-# Copy config and symbol map for reference
-cp .config "$PACKAGE_DIR/kernel-config"
-cp System.map "$PACKAGE_DIR/System.map"
-
-# Store version string
-echo "$KERNEL_VERSION" > "$PACKAGE_DIR/kernel-version"
-
-# Include the Pi-side scripts in the package.
-# Without these the tarball contains only the kernel payload, so the documented
-# next step -- extract, then run install-kernel.sh from the extracted directory
-# -- had nothing to run, and every script had to be copied over separately.
-# They come from two different directories after the repo reorganisation:
-# install-kernel.sh sits beside this script in kernel/, while the post-install
-# set lives in userspace/. All of them are flattened into the package root, so
-# the Pi-side layout is unchanged -- install-kernel.sh still resolves its own
-# directory at runtime and finds boot/ and modules/ beside it, and
-# 02-post-install.sh finds its four job scripts beside it.
-#
-# 02-post-install.sh is a sequencer: without 02a-02d it exits with a diagnostic
-# and installs nothing. Dropping one of them here would ship a tarball that
-# looks complete and fails on the Pi, so the loop below hard-fails on any
-# missing entry rather than warning.
-PI_SIDE_SCRIPTS=(
-    "$SELF_DIR/install-kernel.sh"
-    "$REPO_ROOT/userspace/02-post-install.sh"
-    "$REPO_ROOT/userspace/02a-verify-kernel.sh"
-    "$REPO_ROOT/userspace/02b-bench-tools.sh"
-    "$REPO_ROOT/userspace/02c-sdr-userspace.sh"
-    "$REPO_ROOT/userspace/02d-locale-ru.sh"
-)
-
-for src in "${PI_SIDE_SCRIPTS[@]}"; do
-    if [ ! -f "$src" ]; then
-        echo "ERROR: cannot package missing script: $src"
-        echo "       The repo layout may have changed without this path being"
-        echo "       updated. A tarball without its installer looks fine until"
-        echo "       you try to use it on the Pi."
-        exit 1
-    fi
-    cp "$src" "$PACKAGE_DIR/"
-    chmod +x "$PACKAGE_DIR/$(basename "$src")"
-    echo "       packaged $(basename "$src")"
-done
-
-# Create the tarball
-cd "$BUILD_DIR"
-TARBALL="kosmos-kernel-${KERNEL_VERSION}.tar.gz"
-tar czf "$TARBALL" -C "$PACKAGE_DIR" .
-
-echo ""
-echo "============================================"
-echo "  BUILD COMPLETE"
-echo "============================================"
-echo "  Kernel version:  $KERNEL_VERSION"
-echo "  Package:         $BUILD_DIR/$TARBALL"
-echo "  Size:            $(du -h "$BUILD_DIR/$TARBALL" | cut -f1)"
-echo ""
-echo "  Next steps:"
-echo "    1. SCP to your Pi:"
-echo "       scp $BUILD_DIR/$TARBALL pi@<PI_IP>:~/"
-echo ""
-echo "    2. On the Pi, unpack and install:"
-echo "       mkdir -p ~/kosmos-kernel"
-echo "       tar xzf $TARBALL -C ~/kosmos-kernel"
-echo "       sudo bash ~/kosmos-kernel/install-kernel.sh"
-echo "       sudo reboot"
-echo ""
-echo "    3. After reboot, verify and install the SDR tools:"
-echo "       ~/kosmos-kernel/02-post-install.sh"
-echo ""
-echo "============================================"
+if [ -z "$KERNEL_COMMIT" ]; then
+    echo ""
+    echo "  This build was NOT pinned. If it is the one being benchmarked, set"
+    echo "  KERNEL_COMMIT at the top of this script and record the same SHA in"
+    echo "  benchmarks/BENCHMARKS.md, or the numbers name no kernel:"
+    echo ""
+    echo "    KERNEL_COMMIT=\"$KERNEL_SHA\""
+    echo ""
+fi

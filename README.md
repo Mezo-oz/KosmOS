@@ -52,6 +52,7 @@ Expect 45–90 minutes for a full kernel build on four cores.
 | File | Runs on | Purpose |
 |---|---|---|
 | `kernel/01-build-kernel.sh` | build host | Clones the Pi kernel, merges the config fragment, builds, packages a tarball |
+| `kernel/package-kernel.sh` | build host | Stages the built kernel and the Pi-side scripts into a tarball. Re-runnable without rebuilding |
 | `kernel/sdr-rt.config` | — | Kernel config fragment: the options KosmOS changes from `bcm2712_defconfig` |
 | `kernel/install-kernel.sh` | Pi | Installs the kernel, DTBs, overlays and cmdline into their own boot directory |
 | `userspace/02-post-install.sh` | Pi | Sequencer — runs the four scripts below in order |
