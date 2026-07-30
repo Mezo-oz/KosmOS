@@ -1,9 +1,9 @@
-# KosmOs
+# KosmOS
 
 A real-time Linux kernel build for the Raspberry Pi 5, tuned for software-defined
 radio and satellite reception.
 
-KosmOs is not a full distribution image. It is a set of scripts that build a custom
+KosmOS is not a full distribution image. It is a set of scripts that build a custom
 `PREEMPT_RT` kernel from the Raspberry Pi kernel source, install it **alongside** the
 stock Raspberry Pi OS kernel, and set up an SDR userspace toolchain on top. Your
 existing install stays bootable: every stock boot file is left byte-identical, and
@@ -17,7 +17,7 @@ samples. At 2.4 MS/s, a 1 ms scheduling delay loses roughly 2,400 samples, which
 shows up as tearing in a decoded satellite image or a corrupt frame in a packet
 decoder.
 
-KosmOs changes three things that matter:
+KosmOS changes three things that matter:
 
 - **`PREEMPT_RT`** — the kernel becomes fully preemptible, so a capture thread can
   interrupt kernel work instead of waiting behind it.
@@ -52,7 +52,7 @@ Expect 45–90 minutes for a full kernel build on four cores.
 | File | Runs on | Purpose |
 |---|---|---|
 | `kernel/01-build-kernel.sh` | build host | Clones the Pi kernel, merges the config fragment, builds, packages a tarball |
-| `kernel/sdr-rt.config` | — | Kernel config fragment: the options KosmOs changes from `bcm2712_defconfig` |
+| `kernel/sdr-rt.config` | — | Kernel config fragment: the options KosmOS changes from `bcm2712_defconfig` |
 | `kernel/install-kernel.sh` | Pi | Installs the kernel, DTBs, overlays and cmdline into their own boot directory |
 | `userspace/02-post-install.sh` | Pi | Verifies the running kernel, then installs benchmark and SDR tooling |
 
@@ -67,8 +67,8 @@ arrive on the Pi alongside the kernel payload — you do not transfer them separ
 On the ARM64 build host:
 
 ```bash
-git clone https://github.com/Mezo-oz/KosmOs
-cd KosmOs
+git clone https://github.com/Mezo-oz/KosmOS
+cd KosmOS
 ./kernel/01-build-kernel.sh
 ```
 
@@ -108,7 +108,7 @@ sudo bash ~/kosmos-kernel/install-kernel.sh
 sudo reboot
 ```
 
-Everything KosmOs boots is installed into its own directory, `kosmos/`, on the boot
+Everything KosmOS boots is installed into its own directory, `kosmos/`, on the boot
 partition — kernel image, device tree blobs, overlays and command line. Modules go to
 their own versioned directory under `/lib/modules/`. The installer then adds a `[pi5]`
 block to `config.txt` setting `os_prefix=kosmos/`, which is the firmware mechanism for
@@ -116,7 +116,7 @@ loading a completely separate set of boot files.
 
 **`config.txt` is the only stock file modified.** The stock kernel, its device trees,
 its overlays and `cmdline.txt` are all left byte-identical, so the stock kernel keeps
-booting against its own device trees rather than KosmOs's. That matters for reverting,
+booting against its own device trees rather than KosmOS's. That matters for reverting,
 and it matters for the RT benchmark, where the entire comparison rests on nothing
 differing between the two boots except the kernel.
 
@@ -124,7 +124,7 @@ differing between the two boots except the kernel.
 Until that moment the Pi still boots exactly as it did before, so an interrupted or
 failed install cannot leave you unable to boot.
 
-The KosmOs kernel command line is derived from the stock `cmdline.txt` — so `root=`
+The KosmOS kernel command line is derived from the stock `cmdline.txt` — so `root=`
 and friends carry over unchanged — with `nohz_full` and `rcu_nocbs` appended to
 activate full dynticks on CPUs 1–3, leaving CPU 0 as the housekeeping core. Set
 `NOHZ_FULL_CPUS=""` at the top of `kernel/install-kernel.sh` to disable that.
@@ -174,13 +174,13 @@ contain `kosmos`, you booted the stock kernel.
 If the Pi boots and you can SSH in:
 
 ```bash
-sudo sed -i '/--- KosmOs custom kernel/,/--- end KosmOs/d' /boot/firmware/config.txt
+sudo sed -i '/--- KosmOS custom kernel/,/--- end KosmOS/d' /boot/firmware/config.txt
 sudo reboot
 ```
 
 If it does not boot: pull the SD card, mount the boot partition on another machine (it
-is FAT32), and delete the block between the `--- KosmOs custom kernel` and
-`--- end KosmOs` markers in `config.txt`. The firmware falls back to the untouched
+is FAT32), and delete the block between the `--- KosmOS custom kernel` and
+`--- end KosmOS` markers in `config.txt`. The firmware falls back to the untouched
 stock kernel. A copy of the original `config.txt` is also saved in the timestamped
 `backup-*` directory alongside it.
 
@@ -189,7 +189,7 @@ install/revert cycles leave no residue. Nothing else needs undoing, because noth
 else was changed — the `kosmos/` directory can be left in place or deleted.
 
 To switch kernels for the RT benchmark, comment out the two directives inside that
-block to boot stock, and uncomment them to boot KosmOs.
+block to boot stock, and uncomment them to boot KosmOS.
 
 ## What the config fragment changes
 
@@ -284,7 +284,7 @@ rtl_fm -f 137.1M -s 48000 -g 48 -E dc -A fast noaa19.raw
 sox -r 48000 -es -b 16 -c 1 -t raw noaa19.raw noaa19.wav
 ```
 
-Decoding the WAV to an image needs a decoder that KosmOs does not install — 
+Decoding the WAV to an image needs a decoder that KosmOS does not install — 
 [SatDump](https://github.com/SatDump/SatDump) is the usual choice, and can also run
 the whole capture in one step.
 

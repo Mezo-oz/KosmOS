@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# KosmOs Post-Install Verification & Userspace Setup
+# KosmOS Post-Install Verification & Userspace Setup
 # ============================================================================
 # Run this ON THE PI after rebooting into your custom kernel.
 # It verifies the kernel is correct, then installs SDR userspace tools.
@@ -14,7 +14,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 echo "============================================"
-echo "  KosmOs Post-Install Verification"
+echo "  KosmOS Post-Install Verification"
 echo "============================================"
 echo ""
 
@@ -149,7 +149,7 @@ echo "============================================"
 echo "  RT Benchmark Tooling"
 echo "============================================"
 echo ""
-read -p "Install RT benchmark tools (rt-tests, stress-ng)? (y/N): " INSTALL_BENCH
+read -r -p "Install RT benchmark tools (rt-tests, stress-ng)? (y/N): " INSTALL_BENCH
 case "${INSTALL_BENCH,,}" in
     y|yes)
         sudo apt-get update
@@ -177,7 +177,7 @@ echo "============================================"
 echo "  SDR Userspace Tool Installation"
 echo "============================================"
 echo ""
-read -p "Install SDR userspace tools now? (y/N): " INSTALL_TOOLS
+read -r -p "Install SDR userspace tools now? (y/N): " INSTALL_TOOLS
 if [ "$INSTALL_TOOLS" != "y" ]; then
     echo "Skipping userspace install. Run this script again when ready."
     exit 0
@@ -210,7 +210,7 @@ if [ -d rtl-sdr-blog ]; then rm -rf rtl-sdr-blog; fi
 git clone https://github.com/rtlsdrblog/rtl-sdr-blog
 cd rtl-sdr-blog && mkdir -p build && cd build
 cmake ../ -DINSTALL_UDEV_RULES=ON -DDETACH_KERNEL_DRIVER=ON
-make -j$(nproc) && sudo make install
+make -j"$(nproc)" && sudo make install
 sudo ldconfig
 echo "       Done."
 
@@ -249,7 +249,7 @@ cd /tmp
 if [ -d rtl_433 ]; then rm -rf rtl_433; fi
 git clone https://github.com/merbanan/rtl_433
 cd rtl_433 && mkdir -p build && cd build
-cmake .. && make -j$(nproc) && sudo make install
+cmake .. && make -j"$(nproc)" && sudo make install
 echo "       Done."
 
 echo ""
@@ -260,7 +260,7 @@ cd /tmp
 if [ -d dump1090 ]; then rm -rf dump1090; fi
 git clone https://github.com/flightaware/dump1090
 cd dump1090
-make -j$(nproc) BLADERF=no HACKRF=no
+make -j"$(nproc)" BLADERF=no HACKRF=no
 sudo cp dump1090 /usr/local/bin/
 echo "       Done."
 

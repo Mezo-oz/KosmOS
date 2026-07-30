@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# KosmOs Kernel Install Script — Run this ON the Raspberry Pi 5
+# KosmOS Kernel Install Script — Run this ON the Raspberry Pi 5
 # ============================================================================
 # This script takes the kernel package built in your VM and installs it
 # onto the Pi's SD card. It's non-destructive: it backs up your existing
@@ -16,7 +16,7 @@
 #   ├── overlays/             ← stock overlays, untouched
 #   └── kosmos/               ← everything of ours lives here
 #       ├── kernel-kosmos.img
-#       ├── cmdline.txt       ← stock cmdline + KosmOs additions
+#       ├── cmdline.txt       ← stock cmdline + KosmOS additions
 #       ├── bcm2712*.dtb
 #       └── overlays/
 #
@@ -30,7 +30,7 @@
 #   reverting is genuinely a one-step operation and the stock kernel boots
 #   against its own device trees rather than ours.
 #
-#     1. Delete the KosmOs block from config.txt (or pull the SD card and edit
+#     1. Delete the KosmOS block from config.txt (or pull the SD card and edit
 #        it on another machine if the Pi will not boot)
 #     2. Reboot — the firmware falls back to the stock kernel
 #
@@ -48,7 +48,7 @@ NC='\033[0m' # No Color
 
 # === CONFIGURATION ===
 
-# Subdirectory of the boot partition holding everything KosmOs boots.
+# Subdirectory of the boot partition holding everything KosmOS boots.
 # Also the value given to os_prefix (with a trailing slash added).
 OS_PREFIX_DIR="kosmos"
 
@@ -65,7 +65,7 @@ NOHZ_FULL_CPUS="1-3"
 
 # === Sanity Checks ===
 echo -e "${GREEN}============================================${NC}"
-echo -e "${GREEN}  KosmOs Kernel Installer for Pi 5${NC}"
+echo -e "${GREEN}  KosmOS Kernel Installer for Pi 5${NC}"
 echo -e "${GREEN}============================================${NC}"
 echo ""
 
@@ -80,7 +80,7 @@ fi
 if ! grep -q "Raspberry Pi" /proc/cpuinfo 2>/dev/null && \
    ! grep -q "BCM2712" /proc/cpuinfo 2>/dev/null; then
     echo -e "${YELLOW}WARNING: This doesn't look like a Raspberry Pi.${NC}"
-    read -p "Continue anyway? (y/N): " confirm
+    read -r -p "Continue anyway? (y/N): " confirm
     [ "$confirm" = "y" ] || exit 1
 fi
 
@@ -123,7 +123,7 @@ fi
 if [ ! -d "$SCRIPT_DIR/modules/lib/modules/$KERNEL_VERSION" ]; then
     echo -e "${RED}ERROR: no module directory for $KERNEL_VERSION${NC}"
     echo "       Expected: $SCRIPT_DIR/modules/lib/modules/$KERNEL_VERSION"
-    echo "       Found:    $(ls "$SCRIPT_DIR/modules/lib/modules/" 2>/dev/null | tr '\n' ' ')"
+    echo "       Found:    $(find "$SCRIPT_DIR/modules/lib/modules/" -maxdepth 1 -mindepth 1 -type d -exec basename {} \; 2>/dev/null | tr '\n' ' ')"
     exit 1
 fi
 
@@ -165,7 +165,7 @@ echo "       Backup saved to: $BACKUP_DIR"
 
 # === Step 2: Install Kernel Image, DTBs and Overlays Into Our Own Directory ===
 #
-# Everything KosmOs loads goes under $BOOT_DIR/$OS_PREFIX_DIR/ and nothing in the
+# Everything KosmOS loads goes under $BOOT_DIR/$OS_PREFIX_DIR/ and nothing in the
 # stock boot directory is modified except config.txt.
 #
 # WHY THIS CHANGED: the previous version copied our kernel image next to the
@@ -193,11 +193,11 @@ cp "$SCRIPT_DIR/boot/kernel-kosmos.img" "$KOSMOS_DIR/"
 echo "       kernel-kosmos.img"
 
 cp "$SCRIPT_DIR/boot/bcm2712"*.dtb "$KOSMOS_DIR/"
-echo "       $(ls "$SCRIPT_DIR/boot/bcm2712"*.dtb | wc -l) device tree blob(s)"
+echo "       $(find "$KOSMOS_DIR" -maxdepth 1 -name 'bcm2712*.dtb' | wc -l) device tree blob(s)"
 
 if [ -d "$SCRIPT_DIR/boot/overlays" ]; then
     cp "$SCRIPT_DIR/boot/overlays/"*.dtbo "$KOSMOS_DIR/overlays/" 2>/dev/null || true
-    echo "       $(ls "$KOSMOS_DIR/overlays/" 2>/dev/null | wc -l) overlay(s)"
+    echo "       $(find "$KOSMOS_DIR/overlays" -maxdepth 1 -name '*.dtbo' 2>/dev/null | wc -l) overlay(s)"
 fi
 
 # === Step 3: Build Our Own cmdline.txt ===
@@ -205,7 +205,7 @@ fi
 # os_prefix applies to cmdline.txt too, so the firmware will look for
 # $OS_PREFIX_DIR/cmdline.txt. It MUST exist: without a command line the kernel
 # gets no root= and will not boot. Start from the stock one so root=, rootfstype=
-# and the rest carry over unchanged, then append only what KosmOs adds.
+# and the rest carry over unchanged, then append only what KosmOS adds.
 echo ""
 echo -e "${YELLOW}[3/5] Building $OS_PREFIX_DIR/cmdline.txt...${NC}"
 
@@ -311,7 +311,7 @@ else
     # reverted while still booting the custom kernel. The command lives in the
     # script's closing output and in the README instead.
     cat >> "$BOOT_DIR/config.txt" <<EOF
-# --- KosmOs custom kernel -----------------------------------------------------
+# --- KosmOS custom kernel -----------------------------------------------------
 # Loads the kernel, device trees, overlays and cmdline.txt from $OS_PREFIX_DIR/.
 # Stock kernel files are untouched.
 #
@@ -321,7 +321,7 @@ else
 os_prefix=$OS_PREFIX_DIR/
 kernel=kernel-kosmos.img
 [all]
-# --- end KosmOs ---------------------------------------------------------------
+# --- end KosmOS ---------------------------------------------------------------
 EOF
     echo "       Armed: os_prefix=$OS_PREFIX_DIR/"
 fi
@@ -348,19 +348,19 @@ echo "    cat /sys/devices/system/cpu/nohz_full   # should show ${NOHZ_FULL_CPUS
 echo "    sudo modprobe ax25             # should load without errors"
 echo ""
 echo -e "  ${YELLOW}TO REVERT — from a working SSH session:${NC}"
-echo "    sudo sed -i '/--- KosmOs custom kernel/,/--- end KosmOs/d' $BOOT_DIR/config.txt"
+echo "    sudo sed -i '/--- KosmOS custom kernel/,/--- end KosmOS/d' $BOOT_DIR/config.txt"
 echo "    sudo reboot"
 echo ""
 echo -e "  ${YELLOW}TO REVERT — if the Pi will not boot:${NC}"
 echo "    1. Pull the SD card, mount the boot partition on another computer"
-echo "    2. Delete the KosmOs block from config.txt (between the --- markers)"
+echo "    2. Delete the KosmOS block from config.txt (between the --- markers)"
 echo "    3. Re-insert and power on — the stock kernel loads automatically"
 echo ""
 echo "    Stock config.txt is also saved at:"
 echo "      $BACKUP_DIR/config.txt"
 echo ""
 echo -e "  ${YELLOW}TO SWITCH KERNELS for the RT benchmark:${NC}"
-echo "    Comment out the two directives to boot stock, uncomment to boot KosmOs."
+echo "    Comment out the two directives to boot stock, uncomment to boot KosmOS."
 echo "    Nothing else differs between the two boots — that is what makes the"
 echo "    A/B comparison valid."
 echo ""

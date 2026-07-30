@@ -1,20 +1,20 @@
-# KosmOs — Project Roadmap & Vision
+# KosmOS — Project Roadmap & Vision
 
-*Naming settled 2026-07-29: it's **KosmOs** with a K — matches the existing repo
-(Mezo-oz/KosmOs), the committed artifacts (kernel-kosmos.img, `-kosmos`
+*Naming settled 2026-07-29: it's **KosmOS** with a K — matches the existing repo
+(Mezo-oz/KosmOS), the committed artifacts (kernel-kosmos.img, `-kosmos`
 localversion), and the Cyrillic-flavoured "Kosmos" fits the SATCOM angle.*
 
-## Identity: What KosmOs Is (and Isn't)
+## Identity: What KosmOS Is (and Isn't)
 
-**KosmOs is a ground-up, SATCOM-focused Linux distribution built for the Raspberry Pi 5.**
+**KosmOS is a ground-up, SATCOM-focused Linux distribution built for the Raspberry Pi 5.**
 
 The existing player in this space is DragonOS — a Lubuntu-based distro that ships as
 a pre-built ISO with every SDR tool imaginable pre-installed. DragonOS is the "Kali
 Linux of SDR": boot it up, everything works, you don't know how any of it was built.
 
-KosmOs takes the opposite philosophy:
+KosmOS takes the opposite philosophy:
 
-| | DragonOS | KosmOs |
+| | DragonOS | KosmOS |
 |---|---------|--------|
 | **Base** | Lubuntu (stock kernel) | Custom RT kernel built from source |
 | **Architecture** | x86_64 primary, Pi secondary | ARM64/Pi 5 native, built for the edge |
@@ -24,16 +24,16 @@ KosmOs takes the opposite philosophy:
 | **RT kernel** | No (stock Ubuntu kernel) | Yes (PREEMPT_RT, 1000Hz) |
 | **Field deployment** | Desktop/laptop focused | Pi 5 portable kit with battery + WiFi AP |
 
-**The pitch:** KosmOs is what you'd build if you were setting up a SATCOM ground
+**The pitch:** KosmOS is what you'd build if you were setting up a SATCOM ground
 station from bare metal — custom kernel tuned for real-time RF processing, a curated
 toolkit focused on satellite communications, and a deployment model designed for
 portable field work on ARM64 hardware.
 
 ### Positioning: Appliance, Not Toolbox
 
-KosmOs is **not** "DragonOS minus tools" — that would be a learning project, not a
-product. KosmOs is an **autonomous SATCOM ground station appliance for ARM64**.
-DragonOS hands you a workshop; KosmOs hands you a working instrument: flash the
+KosmOS is **not** "DragonOS minus tools" — that would be a learning project, not a
+product. KosmOS is an **autonomous SATCOM ground station appliance for ARM64**.
+DragonOS hands you a workshop; KosmOS hands you a working instrument: flash the
 image, give it your coordinates, and it starts producing satellite imagery and
 decoded data on its own.
 
@@ -41,7 +41,7 @@ Three pillars separate this from a toy:
 
 1. **Measured RT performance** — the custom kernel is a *claim* until it's
    benchmarked against the stock kernel on identical hardware. See "Proof of
-   Claim" below. If the numbers hold, KosmOs has an engineering result nobody
+   Claim" below. If the numbers hold, KosmOS has an engineering result nobody
    else in this space has published. If they don't, we find out early and
    reposition honestly.
 2. **Appliance-grade automation** — Phase 3 (auto-updating TLEs, scheduled pass
@@ -63,7 +63,7 @@ Three pillars separate this from a toy:
 ## Engineering Standards (adopted 2026-07-29)
 
 **Languages, honestly stated.** The kernel is C — but it's *upstream* C that
-KosmOs configures, patches, and compiles, not writes. KosmOs's own code is
+KosmOS configures, patches, and compiles, not writes. KosmOS's own code is
 orchestration: **bash** for build/install/automation scripts, **Python** where
 a pipeline needs real data handling (rtl_power heatmaps, pass-scheduling
 logic, dashboard backend), and **C/C++ only if/when** we write custom GNU
@@ -73,7 +73,7 @@ contracting, not brick manufacturing.
 **Adapted NASA/JPL discipline.** The famous NASA rules are JPL's "Power of
 Ten" for safety-critical flight C — the actual size rule there is *functions
 ≤ ~60 lines (one printed page)*. A 400-line-per-file cap is not NASA's rule,
-but we adopt it as house convention anyway. KosmOs rules, adapted for
+but we adopt it as house convention anyway. KosmOS rules, adapted for
 shell/Python:
 
 1. **≤400 lines per file** — a script that outgrows this gets split
@@ -83,7 +83,10 @@ shell/Python:
 4. **No unbounded loops** — every retry/wait loop has a timeout or max
    iteration count (rule 2)
 5. **shellcheck clean at zero warnings** — the analog of rule 10 ("all
-   warnings on, all warnings fixed"); CI-gate this in Phase 4
+   warnings on, all warnings fixed"); CI-gate this in Phase 4.
+   **Verified at zero 2026-07-29** (shellcheck 0.9.0 on Linux and 0.11.0
+   locally, both agreeing on the same 11 findings before the fix; zero after,
+   including at `-S style`)
 6. **Smallest scope** — `local` inside functions, globals only when
    deliberate and named LIKE_THIS (rule 6)
 7. **Pin every version, checksum every download** — Pillar 3's mechanics
@@ -115,7 +118,7 @@ isolated before any published number is generated.
   every required file is confirmed present. Revert is a verified byte-identical
   restore.
 - [x] **Settle the tickless claim** — *done, `43d8368`.* `nohz_full` and
-  `rcu_nocbs` are appended to the KosmOs command line, default CPUs 1-3 with
+  `rcu_nocbs` are appended to the KosmOS command line, default CPUs 1-3 with
   CPU 0 left as housekeeping. Configurable via `NOHZ_FULL_CPUS`, which the
   benchmark matrix below relies on.
 - [x] **Make verification possible** — *done, `147fa10`.* `CONFIG_IKCONFIG` +
@@ -139,8 +142,8 @@ Three boot configurations, so each change is attributable to exactly one cause:
 | Config | Kernel | `NOHZ_FULL_CPUS` | What it isolates |
 |---|---|---|---|
 | **A** | stock Pi kernel | n/a | baseline |
-| **B** | KosmOs (PREEMPT_RT) | `""` | RT with no core isolation |
-| **C** | KosmOs (PREEMPT_RT) | `"1-3"` | RT plus full dynticks |
+| **B** | KosmOS (PREEMPT_RT) | `""` | RT with no core isolation |
+| **C** | KosmOS (PREEMPT_RT) | `"1-3"` | RT plus full dynticks |
 
 **Report `B − A` as the PREEMPT_RT result. Report `C − B` as the isolation
 result. Never report `C − A`** — that conflates two independent changes into one
@@ -159,7 +162,7 @@ cyclictest -a 1-3 -l1000000 -m -S -p90 -i200 -h400 -q
 Switching between B and C means editing `NOHZ_FULL_CPUS` in `install-kernel.sh`
 and re-running it, or editing `kosmos/cmdline.txt` on the boot partition
 directly. Switching between A and B/C means commenting the two directives in the
-KosmOs block of `config.txt`. Nothing else differs between any of the three
+KosmOS block of `config.txt`. Nothing else differs between any of the three
 boots — that is what `os_prefix` bought.
 
 ### Methodology
@@ -210,7 +213,7 @@ positioning leans harder on pillars 2 and 3.
 ✅ Custom kernel `6.12.79-v8-16k+` with `PREEMPT_RT`
 ✅ Real-time scheduling (1000Hz tick, high-res timers)
 ✅ Full dynticks (`CONFIG_NO_HZ_FULL`) — **activated** `43d8368`: `nohz_full` and
-   `rcu_nocbs` now on the KosmOs command line (CPUs 1-3 by default). Was
+   `rcu_nocbs` now on the KosmOS command line (CPUs 1-3 by default). Was
    compiled but inert before that.
 ⏳ Kernel version string — `CONFIG_LOCALVERSION="-kosmos"` is set in the fragment
    but **the installed kernel predates it**, so `uname -r` still reports plain
@@ -325,11 +328,11 @@ positioning leans harder on pillars 2 and 3.
     no catalog part will ever exist for a homegrown protocol
   - Closes an independent-verification loop: the embedded device transmits,
     the ground station verifies from outside the firmware — RF unit tests
-  - **Independence rule (2026-07-29):** KosmOs stays independent. This
+  - **Independence rule (2026-07-29):** KosmOS stays independent. This
     decoder is an out-of-tree GNU Radio module (`gr-icesickle`) that *runs
-    on* KosmOs but doesn't ship *in* it — it likely lives in the IceSickle
-    repo. KosmOs is the platform; IceSickle support is an app. The distro
-    never depends on it, references it at most as a "built on KosmOs"
+    on* KosmOS but doesn't ship *in* it — it likely lives in the IceSickle
+    repo. KosmOS is the platform; IceSickle support is an app. The distro
+    never depends on it, references it at most as a "built on KosmOS"
     example. Revisit when Phase 2 starts.
 - [ ] **Upstream contribution to gr-satellites** (custom decoder, community PR)
   - Pick a newly-launched cubesat that's transmitting but not yet covered,
@@ -393,7 +396,7 @@ appliance. Phases 1–2 build the parts; Phase 3 makes them run themselves.*
     pipeline, document the tradeoff.
 
 ### Phase 4: "Hardened Platform" — Reliability & Distribution
-*Goal: Make KosmOs reproducible and distributable*
+*Goal: Make KosmOS reproducible and distributable*
 
 #### 4a. Image Building
 - [ ] **Automated image builder script**
@@ -416,7 +419,7 @@ appliance. Phases 1–2 build the parts; Phase 3 makes them run themselves.*
   - Like shipping a switch with a sane default config
 
 #### 4c. Documentation
-- [ ] **Man pages or built-in help** for KosmOs-specific scripts
+- [ ] **Man pages or built-in help** for KosmOS-specific scripts
 - [ ] **Frequency reference guide** — built-in cheatsheet of common
   SATCOM, weather sat, ADS-B, amateur, ISM band frequencies
 - [ ] **Antenna guide** — which antenna for which mission
@@ -427,11 +430,11 @@ appliance. Phases 1–2 build the parts; Phase 3 makes them run themselves.*
 
 ## Career Alignment: SATCOM Job Skills Map
 
-Based on actual SATCOM job postings, here's how KosmOs maps to career skills.
+Based on actual SATCOM job postings, here's how KosmOS maps to career skills.
 CCNA is explicitly listed as valued in SATCOM roles — your networking background
 is a direct asset.
 
-| Job Requirement | Where You Learn It in KosmOs |
+| Job Requirement | Where You Learn It in KosmOS |
 |----------------|------------------------------|
 | RF engineering / spectrum analysis | SDR++, rtl_power, GNU Radio flowgraphs |
 | Signal processing & modulation | GNU Radio DSP blocks, SatDump demod chains |
@@ -449,7 +452,7 @@ is a direct asset.
 | Performance engineering & benchmarking | RT kernel A/B benchmark (cyclictest, dropped-sample analysis, custom probe block) |
 | DSP development | Custom GNU Radio blocks (probe, decoders), gr-satellites contribution |
 
-### Certifications That Stack Well with KosmOs Experience
+### Certifications That Stack Well with KosmOS Experience
 
 1. **CCNA** (already studying) — Network fundamentals, directly relevant
 2. **CompTIA Security+** — Required for most DoD SATCOM positions
@@ -487,7 +490,7 @@ v1.0   ......    Full release — documented, tested, flashable image
 ## Repository Structure (Target)
 
 ```
-KosmOs/
+KosmOS/
 ├── README.md                    # Project overview and quick start
 ├── ROADMAP.md                   # This document (must be tracked in the repo)
 ├── .gitattributes               # Keep — prevents CRLF breaking shebangs
@@ -524,7 +527,7 @@ KosmOs/
 └── .gitignore
 
 (NOT in this repo: gr-icesickle — lives with the IceSickle project; runs ON
-KosmOs, doesn't ship IN it.)
+KosmOS, doesn't ship IN it.)
 ```
 
 **Migration note:** the reorganization splits install-kernel.sh (→ kernel/) and
@@ -537,7 +540,7 @@ as the `git mv`.
 ## Immediate Next Steps (ordering per 2026-07-29 audit)
 
 **Do first — cheap, everything downstream depends on them:**
-1. ~~Settle C vs K~~ ✅ **K** — KosmOs
+1. ~~Settle C vs K~~ ✅ **K** — KosmOS
 2. ~~Commit this ROADMAP.md into the repo~~ ✅ `0aa90fc`, updated `9280900`
 3. ~~Fix the verification layer~~ ✅ `147fa10` — `CONFIG_IKCONFIG` +
    `IKCONFIG_PROC`, `sudo modprobe ax25`, and a `verify_critical_config()` gate
@@ -565,8 +568,12 @@ as the `git mv`.
 12. First NOAA APT capture using SatDump
 
 **Carried forward from the audit, not yet scheduled:**
-- **shellcheck has never been run** on any script — rule 5 of the Engineering
-  Standards is unverified, not met. Needs a Linux host with `shellcheck`.
+- ~~shellcheck has never been run~~ ✅ **verified at zero.** 11 findings fixed:
+  `$(nproc)` quoted (SC2046 ×3), `read -r` everywhere (SC2162 ×4), `ls` replaced
+  with `find` (SC2012 ×3), and the unused `OUTPUT_DIR` deleted rather than wired
+  up (SC2034) — it was dead, and adding an `output/` directory would have changed
+  the artifact path the README documents. Still needs a CI gate in Phase 4 so it
+  stays at zero.
 - **File-size headroom is thin.** After the reorg, `install-kernel.sh` and
   `02-post-install.sh` sit within ~35 lines of the 400-line cap. The latter does
   four jobs (verify, benchmark tooling, SDR userspace, locale) and is the
@@ -577,5 +584,5 @@ as the `git mv`.
 
 ---
 
-*KosmOs v0.2 — Built from bare metal, aimed at the stars*
+*KosmOS v0.2 — Built from bare metal, aimed at the stars*
 *Target: Raspberry Pi 5 (BCM2712, ARM64)*

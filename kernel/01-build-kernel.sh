@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# KosmOs Kernel Build Script for Raspberry Pi 5
+# KosmOS Kernel Build Script for Raspberry Pi 5
 # ============================================================================
 # Run this inside your Debian ARM64 UTM VM.
 #
@@ -49,9 +49,14 @@ REPO_ROOT="$(cd "$SELF_DIR/.." && pwd)"
 # Change these if you want a different kernel branch or build directory
 KERNEL_BRANCH="rpi-6.12.y"       # Latest Pi LTS branch with RT support
 BUILD_DIR="$HOME/kosmos"         # scratch workspace: kernel source + artifacts
-KERNEL_DIR="$BUILD_DIR/linux"
-OUTPUT_DIR="$BUILD_DIR/output"
+KERNEL_DIR="$BUILD_DIR/linux"        # kernel *source* tree (cloned here)
 PACKAGE_DIR="$BUILD_DIR/kosmos-kernel-pkg"
+
+# There was an OUTPUT_DIR="$BUILD_DIR/output" here. It was never referenced --
+# staged files go to PACKAGE_DIR and the finished tarball is written to
+# BUILD_DIR, which is what the README documents. Removed rather than wired up:
+# introducing an output/ directory now would change the documented artifact path
+# for no benefit.
 
 # Number of parallel build jobs — use all cores
 # This is like setting worker threads on a build server.
@@ -91,7 +96,7 @@ verify_critical_config() {
         echo ""
         echo "ERROR: required options are missing from .config ($when)."
         echo "       Building now would produce a kernel that does not do what"
-        echo "       KosmOs claims, and nothing would tell you until after the"
+        echo "       KosmOS claims, and nothing would tell you until after the"
         echo "       install and reboot."
         echo ""
         echo "       Inspect with:  grep -E 'PREEMPT|CONFIG_HZ|IKCONFIG' .config"
@@ -106,13 +111,13 @@ verify_critical_config() {
         echo ""
         echo "       WARNING: CONFIG_LOCALVERSION is not \"-kosmos\". The build will"
         echo "                work, but uname -r will not identify this kernel as"
-        echo "                KosmOs and 02-post-install.sh will report a failed"
+        echo "                KosmOS and 02-post-install.sh will report a failed"
         echo "                version check."
     fi
 }
 
 echo "============================================"
-echo "  KosmOs Kernel Build for Raspberry Pi 5"
+echo "  KosmOS Kernel Build for Raspberry Pi 5"
 echo "============================================"
 echo "Branch:     $KERNEL_BRANCH"
 echo "Build dir:  $BUILD_DIR"
@@ -213,7 +218,7 @@ echo "         General setup → Preemption Model → should say 'Full RT'"
 echo "         Networking → Amateur Radio → AX.25 should be [M]"
 echo "         Device Drivers → Multimedia → RTL2832 SDR should be [M]"
 echo ""
-read -p "       Press Enter to open menuconfig..."
+read -r -p "       Press Enter to open menuconfig..."
 
 make menuconfig
 
