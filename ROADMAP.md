@@ -210,7 +210,14 @@ positioning leans harder on pillars 2 and 3.
 
 ## What Exists Today (v0.1–v0.2, audited 2026-07-29)
 
-✅ Custom kernel `6.12.79-v8-16k+` with `PREEMPT_RT`
+✅ Custom kernel `6.12.79-v8-16k+` with `PREEMPT_RT` — **confirmed on hardware
+   2026-07-29** via `uname -v` = `#1 SMP PREEMPT_RT Thu Apr  2 14:11:03 CDT 2026`.
+   Note **`/sys/kernel/realtime` does not exist** on this kernel: that file came
+   from the out-of-tree RT patchset, and since RT merged into mainline in 6.12 it
+   is no longer created. The old check tested only for that file, so it reported
+   NOT DETECTED on a genuinely RT kernel — a false negative on the project's
+   central claim. Fixed to check `/proc/config.gz`, then `uname -v`, then the
+   legacy file.
 ✅ Real-time scheduling (1000Hz tick, high-res timers)
 ✅ Full dynticks (`CONFIG_NO_HZ_FULL`) — **activated** `43d8368`: `nohz_full` and
    `rcu_nocbs` now on the KosmOS command line (CPUs 1-3 by default). Was
@@ -218,7 +225,14 @@ positioning leans harder on pillars 2 and 3.
 ⏳ Kernel version string — `CONFIG_LOCALVERSION="-kosmos"` is set in the fragment
    but **the installed kernel predates it**, so `uname -r` still reports plain
    `6.12.79-v8-16k+`. Takes effect on the step-9 rebuild.
-✅ Performance CPU governor (always max clock)
+⚠️ Performance CPU governor — **kernel default only; NOT what runs.** Observed on
+   hardware 2026-07-29: the running governor is `ondemand` despite
+   `CONFIG_CPU_FREQ_DEFAULT_GOV_PERFORMANCE=y`, because Pi OS / Debian override it
+   at boot from userspace. "Always max clock" is currently false. Fixing it needs
+   a boot-time unit, not a kernel rebuild. Matters for the benchmark: ondemand
+   adds frequency-ramp latency on top of scheduling latency, so pin it to
+   performance on **both** kernels before publishing, or say the numbers include
+   ramp effects.
 ✅ AX.25 / amateur radio / packet radio stack compiled as modules
    (verify check fixed `147fa10` — it ran `modprobe` without `sudo` and reported
    a false negative on kernels where AX.25 was fine)
@@ -563,6 +577,23 @@ as the `git mv`.
    first: it is what makes `CONFIG_LOCALVERSION` take effect and what puts the
    `os_prefix` layout on the boot partition. Then the three-config matrix above
    (Test 1 needs no dongle; Test 2 the day the RTL-SDR v4 arrives).
+
+   **Blockers found on hardware 2026-07-29 — handle before rebuilding:**
+   - **A stale block sits in `/boot/firmware/config.txt`** from the April install:
+     `# RF-Linux custom kernel` / `[pi5]` / `kernel=kernel-rflinux.img`. The new
+     installer greps for `^os_prefix=kosmos/` and will not see it, so it would
+     append a second block and leave two conflicting `kernel=` directives. The
+     documented revert one-liner will not match it either (different name). Remove
+     it by hand first, and delete the orphaned `/boot/firmware/kernel-rflinux.img`.
+   - **Pick the stock comparison kernel deliberately.** `/lib/modules` holds
+     6.6.51, 6.12.47, 6.12.62, 6.12.79-v8-16k+ (ours) and 6.18.34. Benchmarking
+     RT 6.12.79 against stock **6.18.34** would fold six minor releases of
+     scheduler changes into the "PREEMPT_RT" delta. Use a **6.12.x** stock kernel
+     — 6.12.62 is already installed — so the RT patch is the only difference.
+   - **Set the governor to performance on both kernels** before any run, or record
+     that the figures include ondemand ramp latency.
+   - `altai.local` is **also the Amnezia build box.** Kernel swaps and reboots
+     there disrupt that project; it is currently paused, so the window is open.
 10. Order the RTL-SDR Blog v4 + dipole antenna kit (if not already)
 11. Build `03-satcom-stack.sh` — pinned from line one
 12. First NOAA APT capture using SatDump

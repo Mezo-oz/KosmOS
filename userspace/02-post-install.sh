@@ -41,14 +41,35 @@ else
 fi
 
 # --- Real-Time ---
+#
+# Do NOT rely on /sys/kernel/realtime alone. That file came from the out-of-tree
+# PREEMPT_RT patchset; since RT was merged into mainline in 6.12 it is not
+# created, so a genuinely RT mainline kernel has no such file. Checking only for
+# it reports NOT DETECTED on exactly the kernel this project builds -- confirmed
+# on hardware 2026-07-29, where uname -v read "SMP PREEMPT_RT" while the file was
+# absent.
+#
+# Authoritative sources, best first:
+#   1. /proc/config.gz  — what was actually compiled (needs CONFIG_IKCONFIG_PROC)
+#   2. uname -v         — the build banner carries "PREEMPT_RT"
+#   3. /sys/kernel/realtime — legacy patchset only; kept for older kernels
 echo -n "RT scheduling:        "
-if [ -f /sys/kernel/realtime ] && [ "$(cat /sys/kernel/realtime)" = "1" ]; then
-    echo -e "${GREEN}ENABLED [OK]${NC}"
+RT_EVIDENCE=""
+if [ -f /proc/config.gz ] && zcat /proc/config.gz 2>/dev/null | grep -qx "CONFIG_PREEMPT_RT=y"; then
+    RT_EVIDENCE="CONFIG_PREEMPT_RT=y in /proc/config.gz"
+elif uname -v | grep -q "PREEMPT_RT"; then
+    RT_EVIDENCE="PREEMPT_RT in uname -v"
+elif [ -f /sys/kernel/realtime ] && [ "$(cat /sys/kernel/realtime)" = "1" ]; then
+    RT_EVIDENCE="/sys/kernel/realtime=1 (legacy patchset)"
+fi
+
+if [ -n "$RT_EVIDENCE" ]; then
+    echo -e "${GREEN}ENABLED [OK]${NC} — $RT_EVIDENCE"
     PASS=$((PASS + 1))
 else
     echo -e "${RED}NOT DETECTED [FAIL]${NC}"
     echo "  → CONFIG_PREEMPT_RT may not have been set."
-    echo "    Check: grep PREEMPT_RT /boot/config-$(uname -r)"
+    echo "    Checked: /proc/config.gz, uname -v, /sys/kernel/realtime"
     FAIL=$((FAIL + 1))
 fi
 
@@ -76,8 +97,22 @@ if [ "$GOV" = "performance" ]; then
     echo -e "performance ${GREEN}[OK]${NC}"
     PASS=$((PASS + 1))
 else
-    echo -e "$GOV ${YELLOW}[not performance — set manually if needed]${NC}"
-    echo "  → To fix: echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor"
+    echo -e "$GOV ${YELLOW}[NOT performance]${NC}"
+    echo "  → CONFIG_CPU_FREQ_DEFAULT_GOV_PERFORMANCE only sets the kernel's"
+    echo "    *default*. Raspberry Pi OS / Debian override it at boot, so the"
+    echo "    running governor is whatever userspace last wrote -- observed as"
+    echo "    'ondemand' on hardware 2026-07-29 despite the kernel default."
+    echo "    The kernel config alone does NOT deliver 'always max clock'."
+    echo ""
+    echo "  → For this session only:"
+    echo "      echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor"
+    echo "  → To persist it, install a unit that sets it at boot; a kernel"
+    echo "    rebuild will not help."
+    echo ""
+    echo "    BENCHMARK NOTE: ondemand adds frequency-ramp latency on top of"
+    echo "    scheduling latency. It is applied to both kernels so the A/B stays"
+    echo "    fair, but pin it to performance on both before publishing numbers,"
+    echo "    or state plainly that the figures include ramp effects."
 fi
 
 # --- USB Subsystem ---
