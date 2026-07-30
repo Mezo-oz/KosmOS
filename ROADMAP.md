@@ -533,11 +533,17 @@ appliance. Phases 1–2 build the parts; Phase 3 makes them run themselves.*
 
 #### 4c. Documentation
 - [ ] **Man pages or built-in help** for KosmOS-specific scripts
-- [ ] **Frequency reference guide** — built-in cheatsheet of common
-  SATCOM, weather sat, ADS-B, amateur, ISM band frequencies
-- [ ] **Antenna guide** — which antenna for which mission
-  - Dipole (VHF/UHF general), V-dipole (NOAA APT), QFH (weather sats),
-    dish (GOES, Inmarsat), Yagi (directional tracking)
+- [x] **Frequency reference guide** — *`config/frequencies.md`.* Weather sats,
+  SATCOM (Iridium/Inmarsat), ADS-B/AIS, amateur, ISM, plus the wavelength table
+  the antenna guide's element lengths come from. Rows likeliest to have drifted
+  are marked ⚠️ rather than presented as settled — a cheatsheet that looks
+  authoritative and is six months stale is worse than one that says so.
+- [x] **Antenna guide** — *`config/antennas.md`.* V-dipole (with the geometry and
+  why 120° horizontal), QFH/turnstile, dish + L-band LNA, Yagi + rotator, λ/4
+  ground plane, discone, HF, and a field-kit section. Leads with the two things
+  that matter more than antenna choice — polarisation and siting — and with the
+  point that receive-only setups need no SWR matching, which is where money
+  otherwise goes.
 
 ---
 
