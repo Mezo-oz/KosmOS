@@ -190,12 +190,23 @@ number and attributes the combined effect to whichever is being argued for.
 
 **In config C, `cyclictest` must be pinned to the isolated cores.** Unpinned it
 will schedule on CPU 0, the housekeeping core, which is not tickless — so config
-C measures config B and the isolation delta reads as zero. Use either:
+C measures config B and the isolation delta reads as zero.
+
+**Decided 2026-07-30: pin in *every* configuration, and run unpinned in every
+configuration too.** Pinning only in C is necessary but not sufficient — a pinned
+run in C compared against an unpinned run in B is two different experiments, and
+the affinity change gets credited to dynticks. `B − A` comes from the unpinned
+rows, `C − B` from the pinned rows. Costs about 35 minutes per configuration
+rather than 18; that is the price of an attributable delta, and it is not to be
+traded away for runtime. `benchmarks/run-latency-bench.sh` implements this.
 
 ```bash
-taskset -c 1-3 cyclictest -l1000000 -m -S -p90 -i200 -h400 -q
-# or cyclictest's own affinity flag:
-cyclictest -a 1-3 -l1000000 -m -S -p90 -i200 -h400 -q
+# unpinned — whole machine
+cyclictest -S -l1000000 -m -p90 -i200 -h400 -q
+
+# pinned — CPUs 1-3. The -a/-t are not redundant with taskset: -S derives one
+# thread per *online* CPU and pins thread 0 to CPU 0, outside the mask, and fails.
+taskset -c 1-3 cyclictest -a 1-3 -t 3 -l1000000 -m -p90 -i200 -h400 -q
 ```
 
 Switching between B and C means editing `NOHZ_FULL_CPUS` in `install-kernel.sh`
@@ -514,12 +525,19 @@ appliance. Phases 1–2 build the parts; Phase 3 makes them run themselves.*
   packages are verified by apt against the archive's signed Release file. No
   script fetches a loose file, so there is no artifact left needing a standalone
   SHA-256 digest; if one is ever added, the digest goes in beside its URL.
-- [ ] **Pin the kernel source too** — `01-build-kernel.sh` still clones
-  `raspberrypi/linux` at `--branch rpi-6.12.y`, whose tip moves. Two kernel
-  builds a month apart are therefore not the same kernel, which matters for a
-  published benchmark. Deliberately left alone for now: changing it changes which
-  kernel the v0.25 A/B measures, and that decision belongs with the rebuild at
-  step 9, not before it.
+- [~] **Pin the kernel source too** — **decided 2026-07-30: pin at the step-9
+  rebuild, to the exact commit that build uses, and record the same SHA in both
+  `01-build-kernel.sh` and `benchmarks/BENCHMARKS.md`. Not before then**, because
+  pinning earlier would change which kernel the v0.25 A/B measures.
+  The mechanism is in place and inert: `KERNEL_COMMIT` at the top of
+  `01-build-kernel.sh` is empty, which keeps the existing
+  clone-the-branch-tip behaviour. Setting it switches to an init+fetch of that
+  exact commit and verifies the checkout against it.
+  Meanwhile every build now *records* what it built: the SHA is printed, written
+  into the package as `kernel-commit`, and an unpinned build prints the exact
+  `KERNEL_COMMIT="..."` line to paste back. Without that there would be nothing
+  to pin *to* after the fact — a version string does not identify a kernel, since
+  two builds weeks apart off one branch report the same one.
 
 #### 4b. Configuration Management
 - [ ] **First-boot setup wizard** (CLI-based)
@@ -624,7 +642,8 @@ KosmOS/
 │   └── ✅ shellcheck.yml        # CI gate: shellcheck at zero, pinned version
 ├── kernel/
 │   ├── ✅ 01-build-kernel.sh    # Kernel build script
-│   ├── ✅ sdr-rt.config         # Kernel config fragment
+│   ├── ✅ package-kernel.sh     # Stages the tarball; re-runnable without a rebuild
+│   ├── ✅ sdr-rt.config         # Kernel config fragment (GPL-2.0-only, see LICENSE)
 │   └── ✅ install-kernel.sh     # Pi kernel installer
 ├── benchmarks/
 │   ├── ✅ BENCHMARKS.md         # RT vs stock results — methodology done, tables empty
@@ -671,7 +690,7 @@ KosmOS/
 KosmOS, doesn't ship IN it.)
 ```
 
-**Packaging note:** `01-build-kernel.sh` copies the Pi-side scripts into the kernel
+**Packaging note:** `package-kernel.sh` copies the Pi-side scripts into the kernel
 tarball from two different directories, and hard-fails on any that are missing.
 That list has to be updated in the same commit as any rename or split under
 `userspace/` — a tarball missing one of them looks complete and fails on the Pi.
@@ -710,10 +729,38 @@ of the repo on the Pi.
    (Test 1 needs no dongle; Test 2 the day the RTL-SDR v4 arrives).
 
    **Bench box = pi-server** (see Hardware Topology). No reboot-window constraint:
-   swaps, crashes and reflashes are expected there.
+   swaps, crashes and reflashes are expected there — *once gate 0 below is met.*
 
-   **Pre-flight on pi-server before rebuilding (run once the bridge is verified on
-   altai):**
+   ### Gate 0 — the bridge must be off pi-server first (decided 2026-07-30)
+
+   **Do not begin the kernel rebuild while the Tor bridge is still on that box.**
+   This is a hard ordering constraint, not a preference: step 9 involves kernel
+   swaps, failed boots and possibly a reflash, and a bridge losing its identity
+   keys or dropping off the network mid-rebuild is a real cost to real users, not
+   just an inconvenience. A bridge that vanishes and returns also loses accrued
+   reputation.
+
+   In order, all by hand:
+
+   1. **Confirm nothing bridge-related is left running on pi-server** — no `tor`
+      process, no `tor-services` containers, no enabled units, and no leftover
+      `DataDirectory` holding identity keys.
+   2. **Confirm the bridge is up and published from altai**, by checking it on Tor
+      Metrics (Relay Search) and seeing recent bridge activity — not merely that
+      the container is running locally. A container can be up while the bridge is
+      unreachable from outside.
+   3. **Only then** run the pre-flight below, and only after that, step 9.
+
+   Steps 1 and 2 need the bridge's fingerprint, which is exactly why they are
+   done by hand and stay out of this repo: **no fingerprint, WAN IP or email in
+   any committed file**, including logs pasted into it. Record only "verified,
+   date" here.
+
+   - [ ] gate 0.1 — nothing bridge-related remains on pi-server
+   - [ ] gate 0.2 — bridge verified live on Tor Metrics from altai
+   - [ ] gate 0.3 — pre-flight below complete
+
+   **Pre-flight on pi-server, after gate 0:**
    - **Check `/boot/firmware/config.txt` for a stale custom-kernel block.** An
      RF-Linux-era block (`# RF-Linux custom kernel` / `kernel=kernel-rflinux.img`)
      was found on **altai** during the earlier investigation; whether pi-server has

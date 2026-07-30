@@ -57,6 +57,40 @@ partition directly.
 are expected there. Its stock kernel is `6.12.62+rpt-rpi-2712`, which is
 config A as installed — no kernel pinning needed for the baseline.
 
+**Before any of this runs, gate 0 in `ROADMAP.md` must be met:** the Tor bridge
+has to be confirmed off pi-server and confirmed live from altai on Tor Metrics.
+The rebuild that precedes these measurements involves failed boots and possibly a
+reflash, and that is not something to do underneath a running bridge.
+
+### Kernel provenance — fill this in before publishing
+
+A version string does not identify a kernel. Two builds a fortnight apart off
+`rpi-6.12.y` report the same `uname -r` and are not the same code, so a benchmark
+that names only a version names nothing reproducible.
+
+`01-build-kernel.sh` prints the source commit it built from, writes it into the
+package as `kernel-commit`, and — when the build was not pinned — prints the exact
+`KERNEL_COMMIT="..."` line to paste back into the script. **At the step-9 rebuild,
+set that pin and record the same SHA here.** Both, not one: the script makes it
+reproducible, this table makes it citable.
+
+| | Config A (stock) | Configs B and C (KosmOS) |
+|---|---|---|
+| `uname -r` | `6.12.62+rpt-rpi-2712` | |
+| `uname -v` | | |
+| Source | Pi OS archive | `raspberrypi/linux` |
+| Commit | n/a — distribution package | |
+| `KERNEL_COMMIT` set in `01-build-kernel.sh` | n/a | ☐ |
+| Config fragment | n/a | `kernel/sdr-rt.config` @ commit |
+| Build date | n/a | |
+
+On the Pi, the commit that was installed can be read back from the extracted
+package:
+
+```bash
+cat ~/kosmos-kernel/kernel-commit
+```
+
 ---
 
 ## Two integrity rules the harnesses enforce
@@ -91,8 +125,16 @@ measures config B, and the isolation delta reads as zero.
 
 The fix is not simply "pin in config C". Comparing a pinned run in C against an
 unpinned run in B compares two different experiments, and the affinity change
-gets attributed to dynticks. So `run-latency-bench.sh` runs **both** modes in
-**every** configuration:
+gets attributed to dynticks.
+
+**Decided 2026-07-30: run both affinity modes in every configuration.** This
+supersedes the earlier method note that pinned only in config C. It roughly
+doubles Test 1's runtime — about 35 minutes per configuration instead of 18 — and
+that cost buys the only thing that makes `C − B` mean anything. It is not
+negotiable down to save time; if time is short, cut the number of load conditions,
+not the affinity matching.
+
+So `run-latency-bench.sh` runs **both** modes in **every** configuration:
 
 | Mode | Command shape |
 |---|---|

@@ -32,9 +32,12 @@
 #   an unpinned run in B compares two different experiments. So both modes run in
 #   all three configurations, and each delta is taken between like and like.
 #
-#   This is a deliberate extension of the one-liner in ROADMAP.md, which pins
-#   only in config C. Pinning only there produces a C-B number that mixes an
-#   affinity change in with the dynticks change.
+#   Settled 2026-07-30, superseding the earlier method note that pinned only in
+#   config C. Pinning only there produces a C-B number that mixes an affinity
+#   change in with the dynticks change. It costs roughly double the runtime,
+#   about 35 minutes per configuration, and that is the price of an attributable
+#   delta. If a run has to be shortened, drop a load condition — not the affinity
+#   matching.
 #
 # GOVERNOR: set to performance before every run, in every configuration, and
 # restored on exit. The kernel's CONFIG_CPU_FREQ_DEFAULT_GOV_PERFORMANCE does not
