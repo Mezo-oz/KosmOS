@@ -803,13 +803,17 @@ of the repo on the Pi.
       gate 0.2 has held for a few days; keeping it is not the same as running it.
 
       ⚠️ **Not only Docker.** Checked 2026-07-30: pi-server also has an
-      apt-installed tor — `tor.service` enabled, `tor@default.service`
-      enabled-runtime — with its own `DataDirectory` at `/var/lib/tor` on the
-      host, entirely separate from the container's volume. Stopping the compose
-      stack and disabling `docker.service` leaves it enabled and it starts on the
-      next boot, which is precisely what this gate exists to prevent. Disable
-      `tor.service` and `tor@default.service` too, and check whether that host
-      tor holds an identity of its own before reflashing the box.
+      apt-installed tor — `tor.service` enabled, `tor@default.service` active —
+      entirely separate from the container. Stopping the compose stack and
+      disabling `docker.service` leaves it enabled and it starts on the next boot,
+      which is precisely what this gate exists to prevent. `tor.service` and
+      `tor@default.service` must be disabled too.
+
+      *Investigated the same day: it is Debian's default tor **client** — listening
+      on `127.0.0.1:9050` only, no `ORPort`, no `BridgeRelay`, and no
+      `/var/lib/tor/fingerprint` on the host. So there is no second identity and
+      no key material to dispose of before a reflash. It still gets disabled; an
+      enabled tor at boot fails this gate whatever it is configured as.*
    2. **Confirm the bridge is up and published from altai**, by checking the
       **same hashed fingerprint** on Tor Metrics — not merely that the container
       is running locally. A container can be up while the bridge is unreachable
