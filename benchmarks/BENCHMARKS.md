@@ -112,7 +112,7 @@ cat ~/kosmos-kernel/kernel-commit
 
 ---
 
-## Two integrity rules the harnesses enforce
+## Three integrity rules the harnesses enforce
 
 ### 1. The governor is pinned in every configuration
 
@@ -170,6 +170,46 @@ in with it.** Flagged rather than discarded: the reader decides, and the evidenc
 is in the file.
 
 Implemented by `benchmarks/thermal-state.sh`.
+
+#### Reporting rule for a `THROTTLED` row
+
+**Do not re-run a throttled row to obtain a clean one and then publish only the
+clean one.** That is selecting on the outcome. The gate exists to make throttling
+*rare and visible*, not to license discarding the runs where it happens — and a
+configuration that throttles more readily than another has told you something
+about itself.
+
+The rule, in order:
+
+1. **Publish the row, with its thermal state beside it.** Peak temperature and the
+   `THROTTLED` verdict are already in `summary.tsv` and the raw file. Put them in
+   the published table too, in their own column — not in a footnote.
+2. **Never average a throttled row with a clean one**, and never compute a delta
+   across a throttled/clean pair. Such a delta contains a frequency change the
+   pinned governor was there to eliminate, and it will be read as a kernel effect.
+3. **Re-running is allowed, but additively.** Keep both rows. A clean re-run beside
+   the throttled original is more informative than either alone, because the pair
+   brackets the effect.
+4. **Discard only for a harness fault** — a wrong `--config` label, a crashed run,
+   a governor that failed to pin. Those are broken measurements. A throttled run is
+   a *valid measurement of a throttled machine*, which is a different thing.
+
+**Why a throttled row may be the more representative one.** The bench box sits on a
+desk with the official active cooler at 4/4. The Phase 3c field kit is a Pi 5 on
+battery in a sealed weatherproof enclosure, possibly in direct sun — **thermally
+worse than anything measured here.** So a throttled row is not a spoiled reading of
+the product; it may be the closest thing in this data set to how the appliance
+actually runs. Reporting the clean rows alone would overstate what a deployed
+KosmOS box delivers.
+
+If enough throttled rows accumulate to support it, `B_hot − B_cool` becomes a
+second reportable delta and the honest headline changes shape — from "PREEMPT_RT
+reduces worst-case latency" to "PREEMPT_RT reduces worst-case latency *given
+thermal headroom*", with a cooling requirement attached. That is a stronger and
+more useful claim than the unqualified one, and no published RT-vs-stock
+comparison in this space states it. **Do not chase it before the base A/B/C matrix
+is in hand** — if `B − A` turns out small, there is nothing for temperature to
+modulate and the extra runs answer nothing.
 
 ### 3. Affinity is matched across configurations
 
@@ -387,3 +427,8 @@ Status: scaffold and Python skeleton only, no DSP logic. See
   interesting than a confirmation.
 - **One box, one dongle, one location.** Nothing here generalises past a Pi 5 with
   an RTL-SDR. Say so in the write-up.
+- **A throttled row gets published, not re-rolled.** Re-running until the number is
+  clean and reporting only that is selection on the outcome. See the reporting rule
+  under integrity rule 2 — and note the field kit is thermally *worse* than this
+  bench box, so the throttled rows may describe the deployed appliance better than
+  the clean ones do.
