@@ -151,8 +151,38 @@ Known duplication, all deliberate:
 
 | Duplicated | Copies in | Size |
 |---|---|---|
-| governor handling, config detection, load generation | `run-latency-bench.sh`, `run-sdr-bench.sh` | ~80 lines |
+| governor handling, config detection, load generation | ~~`run-latency-bench.sh`~~, `run-sdr-bench.sh` | ~80 lines |
 | `clone_pinned` | `02c-sdr-userspace.sh`, `03b-satdump.sh`, `03c-sdrpp.sh` | ~40 lines |
+
+### ✅ The rule fired, 2026-07-30 — and it worked as written
+
+Adding thermal gating to `run-latency-bench.sh` was what tripped the 400-line trigger, exactly
+the way the rule anticipated: the file could not hold the new logic and had nothing to lose
+elsewhere. Three **executable helpers** came out of it, invoked as subprocesses, never sourced:
+
+| Helper | Lines | Interface |
+|---|---|---|
+| `benchmarks/detect-config.sh` | 47 | prints `A`/`B`/`C` on stdout, non-zero if unsure |
+| `benchmarks/governor.sh` | 46 | `read` prints the governor; `set <gov>` sets it |
+| `benchmarks/thermal-state.sh` | 207 | gates on starting temperature, samples, flags throttling |
+
+Two things worth recording because they validate the rule rather than merely following it:
+
+- **The shape held up.** All three are called as commands
+  (`CONFIG=$("$SELF_DIR/detect-config.sh")`, `"$SELF_DIR/governor.sh" set performance`), so each
+  is analysed by shellcheck as its own file and the caller stays clean with no `source=`
+  directive, no `--external-sources`, and no `disable=`. The CI gate still runs plain
+  `shellcheck -S style`.
+- **`run-latency-bench.sh` came out at 392 lines — the same as before.** Extraction bought back
+  exactly the room the thermal work needed. That is the trigger doing its job: the file grew in
+  capability without growing past the cap.
+
+**The asymmetry this created is now the live one.** `run-latency-bench.sh` uses the helpers;
+`run-sdr-bench.sh` still carries its own `read_governor`/`set_governor` and `detect_config`
+copies (see its own note at line 34). **Do not "finish the job" by converting it on sight** —
+that is the tidiness argument the rule exists to refuse. It converts when *it* must grow past
+the cap; it is at 363 with the helpers already written and tested, so that conversion will be
+cheap whenever the trigger actually fires.
 
 **Trigger — the only one.** Extract when a file must grow past the 400-line cap
 and cannot lose the lines elsewhere. Nothing else counts: not tidiness, not the
@@ -181,11 +211,12 @@ detection returns the configuration letter on stdout:
 CONFIG=$(./bench-detect-config.sh)      # prints A, B or C; non-zero if unsure
 ```
 
-**Current headroom** (2026-07-30): `tle-updater.sh` 393, `run-latency-bench.sh`
-392, `install-kernel.sh` 367, `run-sdr-bench.sh` 359. The first two are the ones
-that will trip the trigger first, and when either does, the rule above applies to
-whatever is being added — including if the growth is in `tle-updater.sh`, which
-shares nothing with the harnesses and would extract something else entirely.
+**Current headroom** (measured 2026-07-31): `tle-updater.sh` **397**,
+`run-latency-bench.sh` 392, `install-kernel.sh` 367, `run-sdr-bench.sh` **363**,
+`01-build-kernel.sh` 317. `tle-updater.sh` is now the closest to the cap at 3
+lines of headroom, and it is the awkward one: it shares nothing with the
+harnesses, so the helpers above do it no good and it would extract something
+else entirely. Whatever is added to it next is what decides the seam.
 
 **Custom GNU Radio blocks — the rule.** Write a custom block only when (a) the
 catalog has no part — a protocol or format no existing block handles — or
@@ -307,16 +338,27 @@ isolated before any published number is generated.
 - [x] **Make verification possible** — *done, `147fa10`.* `CONFIG_IKCONFIG` +
   `CONFIG_IKCONFIG_PROC` added, and the `/proc/config.gz` read fixed (it was
   grepping the compressed bytes, which can never match).
-- [ ] **Rebuild with `CONFIG_LOCALVERSION="-kosmos"`** — config is set (`281cf0d`)
-  but **the rebuild has not happened**, so the installed kernel still reports
-  plain `6.12.79-v8-16k+`. Until then the version check in 02-post-install.sh
-  reports FAIL on the running kernel; that is expected, not a regression.
-  Rebuild + reinstall happens at step 9, and also separates the module
-  directories.
+- [x] **Rebuild with `CONFIG_LOCALVERSION="-kosmos"`** — *done 2026-07-31 on
+  pi-server.* The build produced **`6.12.98-kosmos+`**, so the localversion took
+  effect and the module directories are separated. **Not yet installed or
+  booted**, so the version check in `02a-verify-kernel.sh` still reports FAIL
+  against the running stock kernel — expected until the first KosmOS boot, not a
+  regression. See step 9 for what remains.
 - [x] **Install the tooling** — *done, `43d8368`.* `rt-tests` and `stress-ng`
   added behind their own prompt in 02-post-install.sh, deliberately separate
   from the SDR userspace install so Test 1 can run without building a toolchain
   it does not need.
+- [x] **Control for thermal throttling** — *added `5b44fe6`, and it turned out to
+  be the binding constraint on this hardware.* The kernel build peaked at
+  **84.2 °C with the fan at 4/4**, and a 35-minute `cyclictest` run under
+  `stress-ng` is a comparable sustained load. A throttled run does not fail
+  loudly — it quietly inflates the tail latency, which is *the* number this
+  benchmark exists to report, so an unnoticed throttle would corrupt the headline
+  result rather than an incidental one. `benchmarks/thermal-state.sh` gates each
+  run on a starting temperature, samples throughout, and flags any throttling
+  into the results. **Consequence for running the matrix: do not chain the three
+  configurations back to back** — the gate will refuse a hot start, and cool-down
+  time is now part of the schedule.
 
 ### Configuration Matrix (decided 2026-07-29)
 
@@ -433,9 +475,12 @@ positioning leans harder on pillars 2 and 3.
 ✅ Full dynticks (`CONFIG_NO_HZ_FULL`) — **activated** `43d8368`: `nohz_full` and
    `rcu_nocbs` now on the KosmOS command line (CPUs 1-3 by default). Was
    compiled but inert before that.
-⏳ Kernel version string — `CONFIG_LOCALVERSION="-kosmos"` is set in the fragment
-   but **the installed kernel predates it**, so `uname -r` still reports plain
-   `6.12.79-v8-16k+`. Takes effect on the step-9 rebuild.
+✅ Kernel version string — the step-9 rebuild happened 2026-07-31 and produced
+   **`6.12.98-kosmos+`**, so `CONFIG_LOCALVERSION` took effect and this kernel's
+   modules land in their own directory. Built from the pinned commit
+   `f5a99b95`. ⏳ **Not yet installed or booted** — `uname -r` on pi-server still
+   reports the stock `6.12.62+rpt-rpi-2712`, which is config A and is exactly what
+   the baseline needs.
 ⚠️ Performance CPU governor — **kernel default only; NOT what runs.** Observed on
    hardware 2026-07-29: the running governor is `ondemand` despite
    `CONFIG_CPU_FREQ_DEFAULT_GOV_PERFORMANCE=y`, because Pi OS / Debian override it
@@ -669,14 +714,18 @@ appliance. Phases 1–2 build the parts; Phase 3 makes them run themselves.*
   packages are verified by apt against the archive's signed Release file. No
   script fetches a loose file, so there is no artifact left needing a standalone
   SHA-256 digest; if one is ever added, the digest goes in beside its URL.
-- [~] **Pin the kernel source too** — **decided 2026-07-30: pin at the step-9
-  rebuild, to the exact commit that build uses, and record the same SHA in both
-  `01-build-kernel.sh` and `benchmarks/BENCHMARKS.md`. Not before then**, because
-  pinning earlier would change which kernel the v0.25 A/B measures.
-  The mechanism is in place and inert: `KERNEL_COMMIT` at the top of
-  `01-build-kernel.sh` is empty, which keeps the existing
-  clone-the-branch-tip behaviour. Setting it switches to an init+fetch of that
-  exact commit and verifies the checkout against it.
+- [x] **Pin the kernel source too** — ✅ **done at the step-9 rebuild, as planned.**
+  `KERNEL_COMMIT="f5a99b95354d38db209003a7d00560e5091ba94a"` in
+  `01-build-kernel.sh:58`, and the same SHA is recorded in
+  `benchmarks/BENCHMARKS.md` — a published benchmark has to name the kernel it
+  measured.
+  **The pin was set *before* the build, not captured after it**, which is the
+  stronger of the two orderings: the tree that compiled is provably the tree named
+  in the doc, because `kernel-commit` inside the package matches the pin and the
+  build aborts if the checkout lands anywhere else. Capturing afterwards would
+  have recorded a SHA that merely *claimed* to describe the build.
+  Waiting until step 9 was also correct — pinning earlier would have changed which
+  kernel the v0.25 A/B measures.
   Meanwhile every build now *records* what it built: the SHA is printed, written
   into the package as `kernel-commit`, and an unpinned build prints the exact
   `KERNEL_COMMIT="..."` line to paste back. Without that there would be nothing
@@ -752,10 +801,12 @@ is a direct asset.
 ```
 v0.1   ✅ DONE    Custom RT kernel boots on Pi 5
 v0.2   ✅ DONE    SDR userspace tools installed (rtl_433, dump1090, predict)
-v0.25  ......    RT kernel benchmark published (proof of claim — BEFORE the
-                 SATCOM stack; Test 1 needs no dongle, runnable this week)
-                 Harnesses + methodology written; no numbers yet. Blocked on the
-                 step-9 rebuild, which is blocked on a human.
+v0.25  ⏳ ACTIVE  RT kernel benchmark published (proof of claim — BEFORE the
+                 SATCOM stack; Test 1 needs no dongle)
+                 Harnesses + methodology written, thermal control added, kernel
+                 BUILT and pinned (6.12.98-kosmos+, f5a99b95) 07-31. Still no
+                 numbers: install, boot and all 18 result rows remain. Gate 0
+                 fully closed, so nothing blocks it but bench time at the box.
 v0.3   ......    SatDump + GNU Radio + SDR++ (first satellite decode, pinned)
                  + gr-kosmos discontinuity probe (first custom block)
                  Install scripts written and pinned; no build has run.
@@ -790,9 +841,12 @@ KosmOS/
 │   ├── ✅ sdr-rt.config         # Kernel config fragment (GPL-2.0-only, see LICENSE)
 │   └── ✅ install-kernel.sh     # Pi kernel installer
 ├── benchmarks/
-│   ├── ✅ BENCHMARKS.md         # RT vs stock results — methodology done, tables empty
+│   ├── ✅ BENCHMARKS.md         # RT vs stock — methodology + build data; result tables empty
 │   ├── ✅ run-latency-bench.sh  # cyclictest: A/B/C x idle/CPU/IO x whole/pinned
-│   └── ✅ run-sdr-bench.sh      # rtl_test dropped-sample sweep
+│   ├── ✅ run-sdr-bench.sh      # rtl_test dropped-sample sweep
+│   ├── ✅ detect-config.sh      # prints A/B/C from the running kernel (helper)
+│   ├── ✅ governor.sh           # read/set the CPU governor (helper)
+│   └── ✅ thermal-state.sh      # temperature gate + throttle detection (helper)
 ├── gr-kosmos/                   # Custom GNU Radio blocks (OOT module)
 │   ├── ✅ README.md             # Includes why there is no CMakeLists.txt
 │   ├── ✅ install.sh            # Development install (.pth + GRC yml)
@@ -867,10 +921,32 @@ of the repo on the Pi.
 **Then:**
 8. ~~Reorganize repo into target structure~~ ✅ — single commit, `git mv` with the
    packaging paths updated alongside
-9. **v0.25: rebuild, reinstall, run the benchmark.** The rebuild is required
-   first: it is what makes `CONFIG_LOCALVERSION` take effect and what puts the
-   `os_prefix` layout on the boot partition. Then the three-config matrix above
-   (Test 1 needs no dongle; Test 2 the day the RTL-SDR v4 arrives).
+9. **v0.25: rebuild, reinstall, run the benchmark.** ⏳ **Rebuild ✅ done
+   2026-07-31. Install, boot and the benchmark matrix all remain** — and they are
+   the part that needs a human at the hardware.
+
+   **Recommended order, and why it is not the obvious one: run config A first,
+   before installing anything.** pi-server is booted on stock
+   `6.12.62+rpt-rpi-2712` right now, which *is* config A. So the baseline third of
+   the results table can be filled with no kernel swap, no reboot and no risk —
+   and, more useful, it exercises the harness, the three new helpers and the
+   thermal gate end to end while still on a known-good kernel. If
+   `run-latency-bench.sh` has a bug, that finds it *now*, rather than after a
+   kernel swap when a failure is ambiguous between harness and kernel.
+
+   Then: install → reboot → confirm `uname -r` is `6.12.98-kosmos+` and `uname -v`
+   shows `PREEMPT_RT` → run B. Then set `NOHZ_FULL_CPUS="1-3"` → reboot → run C.
+   Fill `uname -v` into `BENCHMARKS.md`, which is still marked *(fill after first
+   boot)*.
+
+   **Budget it as a half-day, not an evening.** ~35 min per configuration is the
+   harness's own figure, so ~105 min of runtime, plus three reboots and — new —
+   thermal cool-down between runs, which the gate will enforce whether or not it is
+   planned for.
+
+   ⚠️ **Unverified from off-box: whether `install-kernel.sh` has already run.**
+   Check `config.txt` for the `os_prefix=kosmos/` block before assuming a reboot
+   lands on stock. Test 1 needs no dongle; Test 2 waits on the RTL-SDR v4.
 
    **Bench box = pi-server** (see Hardware Topology). No reboot-window constraint:
    swaps, crashes and reflashes are expected there — *once gate 0 below is met.*
@@ -942,7 +1018,8 @@ of the repo on the Pi.
      move. Had the identity been lost, it would read the migration date and the
      bridge would be new, with no accrued reputation. Five months of history
      carried over intact.
-   - [ ] gate 0.3 — pre-flight below complete
+   - [x] **gate 0.3 — met 2026-07-31.** Every pre-flight check below is complete;
+     see the results inline. Gate 0 is closed in full.
 
    **Pre-flight on pi-server, after gate 0** — add to the checks below:
    **inventory `/lib/modules`** (`ls -la /lib/modules/ && uname -r`) before a
@@ -979,24 +1056,27 @@ of the repo on the Pi.
    - [x] **`/boot/firmware`: 445 MB free of 510 MB** — ample for a second kernel,
      its DTBs and overlays.
 
-   ⚠️ **Two risks found for the build itself, neither previously recorded:**
+   ✅ **Two risks were flagged for the build itself. The build has now run, and
+   both were measured — neither was real. A third took their place.**
 
-   - **Disk: 22 GB free on `/`, against the README's stated 40 GB requirement**
-     for a build host — *investigated 2026-07-31 and largely defused.* The Pi's
-     own shipped kernel config (`/boot/config-6.12.62+rpt-rpi-2712`) carries
-     **`CONFIG_DEBUG_INFO_NONE=y`**, and `sdr-rt.config` says nothing about debug
-     info, so the build inherits it. Debug info is what makes kernel object trees
-     enormous; without it a defconfig build with modules is single-digit GB, and a
-     shallow clone adds ~2 GB. 22 GB should be comfortable.
-     *This is strong evidence rather than proof — the shipped config is what the
-     Pi kernel was built with, not literally the output of `make
-     bcm2712_defconfig` — so watch `df` during the first build and confirm.*
-     **The README's 40 GB figure looks conservative and should be revisited once
-     a real build has been measured.** If it ever does get tight, the build host
-     need not be the bench box: build elsewhere on ARM64 and copy the tarball.
-   - **RAM: 4 GB with `JOBS=$(nproc)` = 4.** The README itself warns ~1.5 GB per
-     job and says drop to 2 if the OOM killer fires. This is exactly that edge, so
-     expect to need `JOBS=2` and do not read an OOM kill as a broken script.
+   | Risk as predicted | Measured on the real build (`JOBS=3`) |
+   |---|---|
+   | Disk: 22 GB free vs README's 40 GB | **~4 GB consumed**, source tree plus objects |
+   | RAM: 4 GB, OOM at `JOBS=4` | **2903 MB lowest free, 4 MB peak swap** — nowhere near |
+   | *(not predicted)* | **84.2 °C peak SoC, fan 4/4 — thermal is the real limit** |
+
+   - **Disk.** The `CONFIG_DEBUG_INFO_NONE=y` reasoning held: debug info is what
+     makes kernel object trees enormous, and without it the tree stayed at ~4 GB.
+     **The README's 40 GB figure is confirmed far too conservative and should be
+     revisited** — it is now measured rather than inferred.
+   - **RAM.** `JOBS=3` never came close to pressure, and the ~1.5 GB-per-job
+     warning proved pessimistic for this configuration. `JOBS=4` is plausibly fine
+     too, though untested; there is no reason to find out, since the build is not
+     the slow part.
+   - **Thermal is the constraint that actually bites**, and it matters far more for
+     the *benchmark* than for the build — a hot box inflates tail latency, which is
+     the published number. Handled by `thermal-state.sh`; see the prerequisite
+     added above.
 
    - **Build dependencies are mostly absent** (`bc`, `bison`, `flex`,
      `libssl-dev`, `libncurses-dev`, `libelf-dev`, `dwarves`). Not a blocker —
