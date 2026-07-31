@@ -118,7 +118,42 @@ sudo bash automation/install-governor.sh
 Any run whose recorded governor is not `performance` must be labelled as
 including ramp effects, or discarded.
 
-### 2. Affinity is matched across configurations
+### 2. Thermal state is gated, sampled and reported
+
+**Measured on the bench box, mid kernel build, 2026-07-30:** 84.2 °C, fan at
+state **4/4**, `throttled=0xe0008` — soft temperature limit active, and both
+`throttled-since-boot` and `freq-capped-since-boot` set. A stock Pi 5 running the
+official active cooler **does throttle** under sustained all-core load.
+
+Test 1 runs `cyclictest` under `stress-ng --cpu 4`. That is the same thermal load
+as a kernel compile, so the benchmark's own workload will throttle a stock Pi.
+Throttling changes CPU frequency — precisely the variable the performance
+governor was pinned to remove. Left unmeasured it re-enters through the back
+door, differs between configurations measured at different times, and lands in
+the kernel's column.
+
+**KosmOS targets off-the-shelf hardware, so "fit a better cooler" is not an
+available answer.** The method has to be valid inside stock thermal limits:
+
+| Control | What it does |
+|---|---|
+| **Gate** | Each run waits for ≤ 65 °C before starting, bounded at 10 min so a warm room cannot hang the suite. Every run therefore starts from the same thermal condition. |
+| **Sample** | Temperature and the throttle mask are sampled every 5 s *for the duration of the run*, not just at the ends. |
+| **Flag** | A run is marked `THROTTLED` if any throttle bit is active at the end, if a sticky since-boot bit newly appeared, or if any mid-run sample caught it. |
+| **Report** | Start state, end state and **peak temperature** go into each raw file; end temp and the clean/THROTTLED verdict go into `summary.tsv`. |
+
+Sampling throughout matters because the firmware's since-boot bits are *sticky*.
+Once a session has thrown all four, a before/after comparison can only fall back
+on the instantaneous reading at the end — so a run that throttles in the middle
+and recovers would go unflagged. That case is now caught.
+
+**A `THROTTLED` row is not comparable with a clean one and must not be averaged
+in with it.** Flagged rather than discarded: the reader decides, and the evidence
+is in the file.
+
+Implemented by `benchmarks/thermal-state.sh`.
+
+### 3. Affinity is matched across configurations
 
 In config C, CPUs 1–3 are tickless and CPU 0 is the housekeeping core, which is
 not. An unpinned `cyclictest` will schedule threads on CPU 0 — so config C

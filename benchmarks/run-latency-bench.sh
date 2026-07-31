@@ -10,17 +10,10 @@
 # only worth publishing if the two boots differ in nothing but the kernel, which
 # is what the os_prefix install bought — see kernel/install-kernel.sh.
 #
-# THE THREE CONFIGURATIONS (see BENCHMARKS.md):
-#   A  stock Pi kernel
-#   B  KosmOS PREEMPT_RT, NOHZ_FULL_CPUS=""
-#   C  KosmOS PREEMPT_RT, NOHZ_FULL_CPUS="1-3"
-#
-# Report B-A as the PREEMPT_RT result and C-B as the core-isolation result.
-# Never report C-A: it conflates two independent changes into one number.
-#
-# The configuration is detected from the running kernel rather than typed in,
-# because a mislabelled result set is worse than no result set. Override with
-# --config if you know better than the detection.
+# CONFIGURATIONS A (stock) / B (RT) / C (RT + nohz_full), detected from the
+# running kernel rather than typed in — a mislabelled result set is worse than
+# none, because it looks like data. --config overrides. Report B-A and C-B
+# separately, never C-A. Full method in BENCHMARKS.md.
 #
 # TWO AFFINITY MODES, RUN IN EVERY CONFIGURATION:
 #   whole   cyclictest -S — one thread per CPU, across all four
@@ -35,14 +28,13 @@
 #   configuration; if a run must be shortened, drop a load condition, not the
 #   affinity matching. Full argument in BENCHMARKS.md.
 #
-# GOVERNOR: set to performance before every run, in every configuration, and
-#   restored on exit. The kernel default does not survive Pi OS boot — ondemand
-#   was observed on hardware — and its frequency-ramp delay would otherwise land
-#   on whichever kernel happened to be measured cold. Also in BENCHMARKS.md.
+# GOVERNOR: pinned to performance before every run and restored on exit; the
+#   kernel default does not survive Pi OS boot. THERMAL: a stock Pi 5 throttles
+#   under this workload, so each run is gated on a starting temperature and any
+#   throttling during it is recorded and flagged. Both in BENCHMARKS.md.
 #
-# SHARED CODE: the governor, config-detection and load-generation blocks below are
-#   duplicated in run-sdr-bench.sh. Deliberately not extracted — see the
-#   extraction rule in ROADMAP.md for the trigger and the shape it must take.
+# Config detection, governor control and thermal state are executable helpers
+# beside this script — see the extraction rule in ROADMAP.md.
 # ============================================================================
 
 set -euo pipefail
@@ -62,6 +54,15 @@ HIST_BUCKETS=400
 # kernel/install-kernel.sh for config C, or the pinned run lands on a ticking
 # core and measures nothing.
 PINNED_CPUS="1-3"
+
+# Thermal gate. A stock Pi 5 under `stress-ng --cpu 4` reaches its soft
+# temperature limit with the fan already at maximum, so runs started warm are not
+# comparable with runs started cool — and the difference would land in the
+# kernel's column. Every run therefore starts from the same thermal condition,
+# bounded so a warm room cannot hang the suite.
+THERMAL_TARGET_C=65
+THERMAL_WAIT_S=600
+THERMAL="$SELF_DIR/thermal-state.sh"
 
 OUT_DIR="${KOSMOS_BENCH_OUT:-$SELF_DIR/results}"
 
@@ -130,32 +131,8 @@ if ! sudo -v; then
 fi
 
 # --- Configuration detection ------------------------------------------------
-
-detect_config() {
-    local rt=0 nohz=0
-
-    if [ -f /proc/config.gz ] && zcat /proc/config.gz 2>/dev/null \
-        | grep -qx "CONFIG_PREEMPT_RT=y"; then
-        rt=1
-    elif uname -v | grep -q "PREEMPT_RT"; then
-        rt=1
-    fi
-
-    if grep -q "nohz_full=" /proc/cmdline; then
-        nohz=1
-    fi
-
-    if [ "$rt" -eq 0 ]; then
-        echo "A"
-    elif [ "$nohz" -eq 0 ]; then
-        echo "B"
-    else
-        echo "C"
-    fi
-}
-
 if [ -z "$CONFIG" ]; then
-    CONFIG=$(detect_config)
+    CONFIG=$("$SELF_DIR/detect-config.sh")
     DETECTED="auto-detected"
 else
     DETECTED="forced by --config"
@@ -171,22 +148,7 @@ esac
 
 # --- Governor ---------------------------------------------------------------
 
-GOV_PATHS=(/sys/devices/system/cpu/cpu*/cpufreq/scaling_governor)
 ORIGINAL_GOV=""
-
-read_governor() {
-    cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || echo unknown
-}
-
-set_governor() {
-    local want="$1" p
-    for p in "${GOV_PATHS[@]}"; do
-        # An unexpanded glob lands here as a literal on a kernel without
-        # cpufreq; skip it rather than writing to a path that does not exist.
-        [ -e "$p" ] || continue
-        echo "$want" | sudo tee "$p" > /dev/null 2>&1 || true
-    done
-}
 
 restore_state() {
     # Kill any load generator still running, then put the governor back. Both
@@ -194,7 +156,7 @@ restore_state() {
     # the middle of a run, and a failure here must not mask the real error.
     stop_load
     if [ -n "$ORIGINAL_GOV" ] && [ "$ORIGINAL_GOV" != "unknown" ]; then
-        set_governor "$ORIGINAL_GOV"
+        "$SELF_DIR/governor.sh" set "$ORIGINAL_GOV" > /dev/null || true
     fi
 }
 
@@ -295,14 +257,24 @@ run_one() {
     echo "  --- $tag ---"
     echo "      $(printf '%s ' "${cmd[@]}")"
 
-    set_governor performance
+    "$SELF_DIR/governor.sh" set performance > /dev/null || true
     local gov
-    gov=$(read_governor)
+    gov=$("$SELF_DIR/governor.sh" read)
     if [ "$gov" != "performance" ]; then
         echo "      WARNING: governor is '$gov', not performance. The numbers"
         echo "               from this run include frequency-ramp latency and"
         echo "               must be labelled as such."
     fi
+
+    # Cool to a common starting point, then record what we actually got.
+    echo "      $("$THERMAL" wait "$THERMAL_TARGET_C" "$THERMAL_WAIT_S" | tail -2 | head -1)"
+    local therm_before thr_before
+    therm_before=$("$THERMAL" read)
+    thr_before=${therm_before#*throttled=}; thr_before=${thr_before%% *}
+    echo "      before: $therm_before"
+
+    "$THERMAL" watch "$raw.thermal" &
+    local therm_pid=$!
 
     start_load "$load"
 
@@ -312,6 +284,7 @@ run_one() {
         echo "# load:       $load"
         echo "# affinity:   $affinity"
         echo "# governor:   $gov"
+        echo "# thermal before: $therm_before"
         echo "# kernel:     $(uname -r)"
         echo "# uname -v:   $(uname -v)"
         echo "# cmdline:    $(cat /proc/cmdline)"
@@ -324,21 +297,44 @@ run_one() {
 
     stop_load
 
+    kill "$therm_pid" 2>/dev/null || true
+    local therm_after thr_hex thermal_ok peak
+    peak=$("$THERMAL" peak "$raw.thermal")
+    echo "# thermal peak:   $peak" >> "$raw"
+    therm_after=$("$THERMAL" read)
+    thr_hex=${therm_after#*throttled=}; thr_hex=${thr_hex%% *}
+    echo "# thermal after:  $therm_after" >> "$raw"
+
+    # Any "now" bit set at the end means the SoC was throttling during this run,
+    # so its frequency was not constant and the numbers are not comparable with a
+    # clean run. Flagged rather than discarded — the reader decides.
+    if "$THERMAL" occurred "$thr_before" "$thr_hex" || [ "${peak#*any_throttle=}" = "yes" ]; then
+        thermal_ok=THROTTLED
+        echo "      *** THROTTLED during this run — $therm_after"
+        echo "      *** (before: $thr_before  after: $thr_hex)"
+        echo "      *** treat this row as contaminated, not comparable"
+    else
+        thermal_ok=clean
+    fi
+    echo "      after:  $therm_after"
+    echo "      peak:   $peak"
+
     local mn av mx
     mn=$(extract_latency "$raw" Min)
     av=$(extract_latency "$raw" Avg)
     mx=$(extract_latency "$raw" Max)
 
     printf '      min %-6s avg %-6s max %-6s us\n' "$mn" "$av" "$mx"
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-        "$CONFIG" "$load" "$affinity" "$mn" "$av" "$mx" "$gov" >> "$OUT_DIR/summary.tsv"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$CONFIG" "$load" "$affinity" "$mn" "$av" "$mx" "$gov" \
+        "${therm_after#*temp_c=}" "$thermal_ok" >> "$OUT_DIR/summary.tsv"
 }
 
 # --- Main -------------------------------------------------------------------
 
 mkdir -p "$OUT_DIR"
 
-ORIGINAL_GOV=$(read_governor)
+ORIGINAL_GOV=$("$SELF_DIR/governor.sh" read)
 trap restore_state EXIT
 
 RUNS=6
