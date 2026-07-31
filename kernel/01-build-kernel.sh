@@ -55,7 +55,7 @@ KERNEL_DIR="$BUILD_DIR/linux"        # kernel *source* tree (cloned here)
 # benchmarks/BENCHMARKS.md: a published benchmark has to name the kernel it
 # measured. Either way the SHA actually built is captured below, printed, and
 # shipped in the package as kernel-commit.
-KERNEL_COMMIT=""
+KERNEL_COMMIT="f5a99b95354d38db209003a7d00560e5091ba94a"
 
 # There was an OUTPUT_DIR="$BUILD_DIR/output" here. It was never referenced --
 # staged files go to PACKAGE_DIR and the finished tarball is written to

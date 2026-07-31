@@ -77,13 +77,31 @@ reproducible, this table makes it citable.
 
 | | Config A (stock) | Configs B and C (KosmOS) |
 |---|---|---|
-| `uname -r` | `6.12.62+rpt-rpi-2712` | |
-| `uname -v` | | |
-| Source | Pi OS archive | `raspberrypi/linux` |
-| Commit | n/a — distribution package | |
-| `KERNEL_COMMIT` set in `01-build-kernel.sh` | n/a | ☐ |
-| Config fragment | n/a | `kernel/sdr-rt.config` @ commit |
-| Build date | n/a | |
+| `uname -r` | `6.12.62+rpt-rpi-2712` | `6.12.98-kosmos+` |
+| `uname -v` | `#1 SMP PREEMPT Debian 1:6.12.62-1+rpt1` | *(fill after first boot)* |
+| Source | Pi OS archive | `raspberrypi/linux`, branch `rpi-6.12.y` |
+| Commit | n/a — distribution package | **`f5a99b95354d38db209003a7d00560e5091ba94a`** |
+| `KERNEL_COMMIT` set in `01-build-kernel.sh` | n/a | ☑ yes — pinned *before* the build |
+| Config fragment | n/a | `kernel/sdr-rt.config` |
+| Built | n/a | 2026-07-31 on pi-server |
+
+The pin was set before building rather than captured afterwards, so the tree that
+compiled is provably the tree named here: `kernel-commit` inside the package
+matches the pin in the script, and the build would have aborted had the checkout
+landed anywhere else.
+
+**Build cost, measured** (pi-server: Pi 5, 4 GB, 4 cores, `JOBS=3`):
+
+| | |
+|---|---|
+| Disk consumed | ~4 GB total, source tree plus objects |
+| Lowest free memory | 2903 MB |
+| Peak swap used | 4 MB — effectively none |
+| Peak SoC temperature | 84.2 °C, fan at 4/4 |
+
+Disk and memory were never constraints; `CONFIG_DEBUG_INFO_NONE=y` keeps the
+object tree small. **Thermal headroom is the only real limit on this hardware** —
+see the thermal control above.
 
 On the Pi, the commit that was installed can be read back from the extracted
 package:
