@@ -63,11 +63,13 @@ KERNEL_COMMIT="f5a99b95354d38db209003a7d00560e5091ba94a"
 # introducing an output/ directory now would change the documented artifact path
 # for no benefit.
 
-# Number of parallel build jobs — use all cores
+# Number of parallel build jobs — defaults to all cores, override with JOBS=N.
 # This is like setting worker threads on a build server.
 # More cores = faster build, but also more RAM usage (~1.5GB per job).
-# On 4GB VM RAM, use $(nproc). If you get OOM kills, drop to 2.
-JOBS=$(nproc)
+# On 4GB RAM use $(nproc); if you get OOM kills or thermal throttling on a
+# small box, export JOBS=3 (or 2) before running instead of editing this file,
+# so the tree stays clean and pulls don't conflict.
+JOBS="${JOBS:-$(nproc)}"
 
 # Gate the build on the options that define this kernel.
 #
