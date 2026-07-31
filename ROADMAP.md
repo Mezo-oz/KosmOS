@@ -962,10 +962,13 @@ of the repo on the Pi.
    - [x] **Config-A baseline confirmed**: running `6.12.62+rpt-rpi-2712`,
      `#1 SMP PREEMPT Debian 1:6.12.62-1+rpt1`. Exactly the ROADMAP's expectation,
      so no pinning is needed for the baseline.
-   - [x] **Governor unit installed and working** — all four cores read
-     `performance`, `kosmos-governor.service` enabled and active.
-     ⏳ *Reboot persistence is the one thing not yet proven, and it is the whole
-     point of the unit. Confirm before any benchmark run.*
+   - [x] **Governor unit installed, and verified across a reboot 2026-07-31.**
+     Rebooted from 34 days' uptime; 16 seconds into the new boot the journal shows
+     `kosmos-set-governor: 'performance' set on 4 core(s)`, all four cores read
+     `performance`, and `scaling_cur_freq` equals `scaling_max_freq` at
+     2 400 000 kHz — pinned at max with no ramp. That is the ondemand
+     frequency-ramp latency removed from the benchmark, which is the only reason
+     the unit exists.
      - **Refinement to the earlier finding:** `ondemand.service` **does not exist**
        on pi-server, so the installer's masking step was a no-op. The `ondemand`
        governor here comes from the stock kernel's own default, not from a Debian
@@ -979,11 +982,18 @@ of the repo on the Pi.
    ⚠️ **Two risks found for the build itself, neither previously recorded:**
 
    - **Disk: 22 GB free on `/`, against the README's stated 40 GB requirement**
-     for a build host. A shallow kernel clone plus a full object tree with modules
-     may or may not fit. Measure before committing to a 90-minute build, and if it
-     is tight the cheapest large saving is turning off `CONFIG_DEBUG_INFO`, which
-     dominates object-tree size. Alternative: build on another ARM64 host and copy
-     the tarball over — the build host does not have to be the bench box.
+     for a build host — *investigated 2026-07-31 and largely defused.* The Pi's
+     own shipped kernel config (`/boot/config-6.12.62+rpt-rpi-2712`) carries
+     **`CONFIG_DEBUG_INFO_NONE=y`**, and `sdr-rt.config` says nothing about debug
+     info, so the build inherits it. Debug info is what makes kernel object trees
+     enormous; without it a defconfig build with modules is single-digit GB, and a
+     shallow clone adds ~2 GB. 22 GB should be comfortable.
+     *This is strong evidence rather than proof — the shipped config is what the
+     Pi kernel was built with, not literally the output of `make
+     bcm2712_defconfig` — so watch `df` during the first build and confirm.*
+     **The README's 40 GB figure looks conservative and should be revisited once
+     a real build has been measured.** If it ever does get tight, the build host
+     need not be the bench box: build elsewhere on ARM64 and copy the tarball.
    - **RAM: 4 GB with `JOBS=$(nproc)` = 4.** The README itself warns ~1.5 GB per
      job and says drop to 2 if the OOM killer fires. This is exactly that edge, so
      expect to need `JOBS=2` and do not read an OOM kill as a broken script.
