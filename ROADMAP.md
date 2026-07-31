@@ -930,9 +930,18 @@ of the repo on the Pi.
      byte-identical to the pre-move capture, so the `cert=` in every distributed
      bridge line still works. Tor's ORPort self-test — an external check, a
      remote relay connecting back — passed, and the server descriptor is
-     publishing. *Outstanding verification, not a blocker: the
-     `bridges.torproject.org/status` dashboard lags hours behind; confirm there
-     before deleting pi-server's rollback copies.*
+     publishing.
+
+     ✅ **Externally confirmed 2026-07-31.** BridgeDB's own tester reports
+     `obfs4 IPv4: functional`, tested *after* the migration — which also closes
+     the one gap tor's self-test cannot cover, since tor only ever tests the
+     ORPort and never the obfs4 port. Onionoo reports `running: true`, flags
+     `Running / V2Dir / Valid`, transport `obfs4`, and a recommended Tor version.
+
+     **The decisive field is `first_seen: 2026-03-05`** — unchanged across the
+     move. Had the identity been lost, it would read the migration date and the
+     bridge would be new, with no accrued reputation. Five months of history
+     carried over intact.
    - [ ] gate 0.3 — pre-flight below complete
 
    **Pre-flight on pi-server, after gate 0** — add to the checks below:
