@@ -348,17 +348,22 @@ isolated before any published number is generated.
   added behind their own prompt in 02-post-install.sh, deliberately separate
   from the SDR userspace install so Test 1 can run without building a toolchain
   it does not need.
-- [x] **Control for thermal throttling** — *added `5b44fe6`, and it turned out to
-  be the binding constraint on this hardware.* The kernel build peaked at
-  **84.2 °C with the fan at 4/4**, and a 35-minute `cyclictest` run under
-  `stress-ng` is a comparable sustained load. A throttled run does not fail
-  loudly — it quietly inflates the tail latency, which is *the* number this
-  benchmark exists to report, so an unnoticed throttle would corrupt the headline
-  result rather than an incidental one. `benchmarks/thermal-state.sh` gates each
-  run on a starting temperature, samples throughout, and flags any throttling
-  into the results. **Consequence for running the matrix: do not chain the three
-  configurations back to back** — the gate will refuse a hot start, and cool-down
-  time is now part of the schedule.
+- [x] **Control for thermal throttling** — *added `5b44fe6`.* **This is about the
+  benchmark's validity, not about build cost or about anything a user of a flashed
+  image would ever encounter.** A 35-minute `cyclictest` run under `stress-ng` is
+  sustained all-core load, and on this hardware that saturates the cooling — the
+  kernel build reached 84.2 °C with the fan already at 4/4, which is the evidence
+  that it does.
+  Why it corrupts the result rather than merely slowing it: a throttled run does
+  not fail loudly, it **inflates the tail latency** — and worst-case tail under
+  load is *the* number this benchmark exists to publish. Two configurations run at
+  different temperatures produce a delta that is partly thermal and gets attributed
+  entirely to the kernel. `benchmarks/thermal-state.sh` therefore gates each run on
+  a starting temperature (≤65 °C, bounded by a 600 s wait so a warm room cannot
+  hang the suite), samples throughout, and flags any throttling into the results.
+  **Consequence for running the matrix: do not chain the three configurations back
+  to back** — the gate will refuse a hot start, and cool-down is part of the
+  schedule.
 
 ### Configuration Matrix (decided 2026-07-29)
 
@@ -1063,7 +1068,17 @@ of the repo on the Pi.
    |---|---|
    | Disk: 22 GB free vs README's 40 GB | **~4 GB consumed**, source tree plus objects |
    | RAM: 4 GB, OOM at `JOBS=4` | **2903 MB lowest free, 4 MB peak swap** — nowhere near |
-   | *(not predicted)* | **84.2 °C peak SoC, fan 4/4 — thermal is the real limit** |
+   | *(not predicted)* | 84.2 °C peak SoC, fan 4/4 — **the build was not limited by it** |
+
+   **The build hit no limit at all.** It completed at 84.2 °C without throttling
+   to failure, without needing `JOBS` reduced, and without any intervention. Build
+   thermals are also a fact about *this* box and irrelevant to anyone who flashes a
+   finished image, which is the entire distribution model from Phase 4a onward — a
+   user compiling a kernel is not a case KosmOS is designed for.
+   The temperature is recorded here for one reason only: it establishes that **this
+   hardware saturates its cooling under sustained all-core load**, and the
+   benchmark is exactly that kind of load. It is evidence about the *benchmark's*
+   validity, not a build requirement, and it should never be quoted as one.
 
    - **Disk.** The `CONFIG_DEBUG_INFO_NONE=y` reasoning held: debug info is what
      makes kernel object trees enormous, and without it the tree stayed at ~4 GB.
