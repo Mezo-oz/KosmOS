@@ -211,12 +211,20 @@ detection returns the configuration letter on stdout:
 CONFIG=$(./bench-detect-config.sh)      # prints A, B or C; non-zero if unsure
 ```
 
-**Current headroom** (measured 2026-07-31): `tle-updater.sh` **397**,
+**Current headroom** (measured 2026-08-02): `tle-updater.sh` **397**,
 `run-latency-bench.sh` 392, `install-kernel.sh` 367, `run-sdr-bench.sh` **363**,
-`01-build-kernel.sh` 317. `tle-updater.sh` is now the closest to the cap at 3
-lines of headroom, and it is the awkward one: it shares nothing with the
-harnesses, so the helpers above do it no good and it would extract something
-else entirely. Whatever is added to it next is what decides the seam.
+`01-build-kernel.sh` 319, `02c-sdr-userspace.sh` 298. `tle-updater.sh` is now the
+closest to the cap at 3 lines of headroom, and it is the awkward one: it shares
+nothing with the harnesses, so the helpers above do it no good and it would
+extract something else entirely. Whatever is added to it next is what decides the
+seam.
+
+**This table is the only place in this document that carries live line counts.**
+Other sections record sizes *as of the change they describe* and say so. Two
+sections tracking the same moving number is how this drifted: the split note in
+"Carried forward from the audit" had `02c-sdr-userspace.sh` at 148 while it was
+actually 298 — an error large enough to hide a fired trigger, in the one table
+the trigger is read from.
 
 **Custom GNU Radio blocks — the rule.** Write a custom block only when (a) the
 catalog has no part — a protocol or format no existing block handles — or
@@ -1111,14 +1119,14 @@ of the repo on the Pi.
   the artifact path the README documents. ✅ **Now CI-gated** so it stays at zero.
 - ~~**File-size headroom is thin.**~~ ✅ **`02-post-install.sh` is split.** It did
   four jobs (verify, benchmark tooling, SDR userspace, locale) in 399 lines, one
-  under the cap. Now a 96-line sequencer over `02a-verify-kernel.sh` (187),
-  `02b-bench-tools.sh` (47), `02c-sdr-userspace.sh` (148) and
-  `02d-locale-ru.sh` (63), each runnable standalone. Behaviour through the
-  sequencer is unchanged, including the inherited quirk that declining the SDR
-  install also skips the locale step — 02c signals that with exit code 3.
-  `install-kernel.sh` (366) and `01-build-kernel.sh` (371) are still the two
-  files near the cap; neither does more than one job, so neither is a natural
-  split yet.
+  under the cap. Now a sequencer over `02a-verify-kernel.sh`,
+  `02b-bench-tools.sh`, `02c-sdr-userspace.sh` and `02d-locale-ru.sh`, each
+  runnable standalone. Behaviour through the sequencer is unchanged, including
+  the inherited quirk that declining the SDR install also skips the locale step —
+  02c signals that with exit code 3.
+  *(Sizes at the split, 2026-07-29: 96 / 187 / 47 / 148 / 63. They have moved
+  since — 02c in particular nearly doubled taking the version pins. See the
+  headroom table under the extraction rule for current figures; it is canonical.)*
 - ~~**Retrofit version pins into `02-post-install.sh`**~~ ✅ **done.** All four
   projects in `02c-sdr-userspace.sh` are pinned to exact commits, verified after
   checkout, and recorded to a build manifest. Pins captured 2026-07-29:
