@@ -211,9 +211,12 @@ detection returns the configuration letter on stdout:
 CONFIG=$(./bench-detect-config.sh)      # prints A, B or C; non-zero if unsure
 ```
 
-**Current headroom** (measured 2026-08-02): `tle-updater.sh` **397**,
-`run-latency-bench.sh` 392, `install-kernel.sh` **383**, `run-sdr-bench.sh` 363,
-`01-build-kernel.sh` 319, `02c-sdr-userspace.sh` 298. `tle-updater.sh` is now the
+**Current headroom** (measured 2026-08-03): `tle-updater.sh` **397**,
+`run-latency-bench.sh` **396**, `install-kernel.sh` 383, `run-sdr-bench.sh` 363,
+`01-build-kernel.sh` 319, `02c-sdr-userspace.sh` 298. Two files now sit within
+four lines of the cap, so the next change to either is what fires the trigger —
+and for `run-latency-bench.sh` the helpers are already written, so that conversion
+is cheap. `tle-updater.sh` is now the
 closest to the cap at 3 lines of headroom, and it is the awkward one: it shares
 nothing with the harnesses, so the helpers above do it no good and it would
 extract something else entirely. Whatever is added to it next is what decides the

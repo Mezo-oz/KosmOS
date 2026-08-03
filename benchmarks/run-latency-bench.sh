@@ -325,9 +325,9 @@ run_one() {
     mx=$(extract_latency "$raw" Max)
 
     printf '      min %-6s avg %-6s max %-6s us\n' "$mn" "$av" "$mx"
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
         "$CONFIG" "$load" "$affinity" "$mn" "$av" "$mx" "$gov" \
-        "${therm_after#*temp_c=}" "$thermal_ok" >> "$OUT_DIR/summary.tsv"
+        "${therm_after#*temp_c=}" "$thermal_ok" "$LOOPS" >> "$OUT_DIR/summary.tsv"
 }
 
 # --- Main -------------------------------------------------------------------
@@ -366,8 +366,12 @@ case "${GO,,}" in
         ;;
 esac
 
+# This file appends; raw files overwrite. So a --quick pass or a repeated config
+# leaves rows that look publishable with no evidence left behind them, and `loops`
+# is what tells them apart. The header also named seven columns against nine
+# fields, leaving the thermal data unlabelled where the tables are read from.
 if [ ! -f "$OUT_DIR/summary.tsv" ]; then
-    printf 'config\tload\taffinity\tmin_us\tavg_us\tmax_us\tgovernor\n' \
+    printf 'config\tload\taffinity\tmin_us\tavg_us\tmax_us\tgovernor\tthermal\tverdict\tloops\n' \
         > "$OUT_DIR/summary.tsv"
 fi
 
