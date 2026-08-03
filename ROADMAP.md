@@ -485,20 +485,17 @@ positioning leans harder on pillars 2 and 3.
    production host). It proved PREEMPT_RT works — a v0.1 result — but the bench
    box (pi-server) gets a fresh `-kosmos` build at step 9; it is not carried over.*
 ✅ Real-time scheduling (1000Hz tick, high-res timers)
-⚠️ Full dynticks (`CONFIG_NO_HZ_FULL`) — **compiled in, and the installer knows
-   how to activate it, but it is NOT active on the running kernel.** Corrected
-   2026-08-02: this was marked ✅ on the strength of `43d8368` adding the
-   `nohz_full`/`rcu_nocbs` append to `install-kernel.sh`. The code was there; the
-   activation was not. The install that actually ran on pi-server used
-   `NOHZ_FULL_CPUS=""`, so `/boot/firmware/kosmos/cmdline.txt` carries neither
-   directive and `detect-config.sh` correctly reports **B**.
-   That is the right state for config B and nothing is broken — but it is a
-   textbook ✅-because-code-exists, and the rule against those exists precisely
-   because this one survived four commits and a hardware audit. **It becomes ✅
-   when config C boots and `detect-config.sh` prints C**, which is the same event
-   that proves the firmware reads `kosmos/cmdline.txt` rather than falling back to
-   the stock one — currently unprovable, since with no append the two files are
-   byte-identical.
+✅ Full dynticks (`CONFIG_NO_HZ_FULL`) — **active and confirmed on hardware
+   2026-08-02.** `/sys/devices/system/cpu/nohz_full` reads `1-3` on the running
+   kernel, which is the kernel itself reporting the isolated set rather than an
+   inference from the command line.
+   *Was briefly marked ⚠️ earlier the same day, and the reason is worth keeping.
+   It had been ✅ since `43d8368` on the strength of that commit adding the
+   `nohz_full`/`rcu_nocbs` append to `install-kernel.sh` — but the install that
+   actually ran used `NOHZ_FULL_CPUS=""`, so the directives were absent from the
+   booted command line for days while this document called the feature activated.
+   The code existed; the activation did not. It survived four commits and a
+   hardware pre-flight, which is exactly why "verified, not written" is the rule.*
 ✅ Kernel version string — the step-9 rebuild happened 2026-07-31 and produced
    **`6.12.98-kosmos+`**, so `CONFIG_LOCALVERSION` took effect and this kernel's
    modules land in their own directory. Built from the pinned commit
@@ -963,16 +960,36 @@ of the repo on the Pi.
    the box is sitting on B, so running B from where it stands wastes nothing.
    Two reboots total, the same as the old plan needed.
 
-   1. **B — run from the current boot.** No reboot. Smoke-test the harness first
-      with `--quick` and `KOSMOS_BENCH_OUT` pointed somewhere disposable (see the
-      warning below), then the full run.
-   2. **C — `sudo NOHZ_FULL_CPUS="1-3" bash kernel/install-kernel.sh` → reboot.**
-      Confirm `detect-config.sh` prints **C** before running the matrix. That check
-      is not a formality: it is the only evidence that the firmware reads
-      `kosmos/cmdline.txt` at all, because with no dynticks append that file is
-      byte-identical to the stock one and B is indistinguishable from a fallback.
-   3. **A — comment the two directives in the KosmOS block of `config.txt` →
-      reboot.** Confirm `detect-config.sh` prints **A**.
+   **Superseded 2026-08-02 by what the box turned out to have already done.**
+   Config A was run on 2026-07-31 *before* the kernel was installed — six rows,
+   full 1M loops, `configA-*.txt` raws intact. So the real order was A → B → C
+   with a single reboot, and by the time this was worked out only C remained.
+   Kept here because the reasoning still applies to a re-run:
+
+   1. **B — ran from the KosmOS boot already in place.** No reboot needed.
+   2. **C — reached by editing `/boot/firmware/kosmos/cmdline.txt` directly**,
+      appending `nohz_full=1-3 rcu_nocbs=1-3`, then rebooting. **Not** by re-running
+      the installer: `install-kernel.sh` resolves its package directory from its own
+      location and needs `boot/`, `kernel-version` and `modules/` beside it — that
+      is the extracted tarball, not the repo clone, and no tarball survives on
+      pi-server. Back up the file first; it must stay a single line.
+   3. **A — already banked**, so no third boot. To redo it: comment the two
+      directives in the KosmOS block of `config.txt` and reboot.
+
+   Confirm the configuration after every reboot before running anything —
+   `detect-config.sh` must print the expected letter. For C that check is not a
+   formality: it was the only available evidence that the firmware reads
+   `kosmos/cmdline.txt` at all, since without the dynticks append that file is
+   byte-identical to the stock one and B is indistinguishable from a fallback.
+   ✅ **It passed 2026-08-02** — `detect-config.sh` prints C and
+   `/sys/devices/system/cpu/nohz_full` reads `1-3`, so `os_prefix` command-line
+   isolation is proven end to end.
+
+   ⚠️ **`summary.tsv` is append-only; raw files are not.** A re-run overwrites
+   `config<X>-<load>-<affinity>.txt` but appends six more rows, so a repeated pass
+   leaves duplicate rows whose raw evidence has been destroyed. This happened: B
+   ran twice, and the earlier pass's rows had to be removed because nothing backed
+   them. Check the row count before transcribing.
 
    Fill `uname -v` into `BENCHMARKS.md`, which is still marked *(fill after first
    boot)*. Take the exact string from the box — `02a-verify-kernel.sh` confirms
