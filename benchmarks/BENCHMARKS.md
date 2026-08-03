@@ -78,7 +78,7 @@ reproducible, this table makes it citable.
 | | Config A (stock) | Configs B and C (KosmOS) |
 |---|---|---|
 | `uname -r` | `6.12.62+rpt-rpi-2712` | `6.12.98-kosmos+` |
-| `uname -v` | `#1 SMP PREEMPT Debian 1:6.12.62-1+rpt1` | *(fill after first boot)* |
+| `uname -v` | `#1 SMP PREEMPT Debian 1:6.12.62-1+rpt1` | `#1 SMP PREEMPT_RT Fri Jul 31 02:36:12 BST 2026` |
 | Source | Pi OS archive | `raspberrypi/linux`, branch `rpi-6.12.y` |
 | Commit | n/a — distribution package | **`f5a99b95354d38db209003a7d00560e5091ba94a`** |
 | `KERNEL_COMMIT` set in `01-build-kernel.sh` | n/a | ☑ yes — pinned *before* the build |
