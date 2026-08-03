@@ -62,7 +62,23 @@ OS_PREFIX_DIR="kosmos"
 # the same time makes the improvement unattributable. Either set this to "" for
 # the A/B runs, or run three configurations (stock, RT alone, RT + dynticks) and
 # report them separately.
-NOHZ_FULL_CPUS="1-3"
+#
+# Overridable from the environment so switching configurations does not mean
+# editing a tracked file. That distinction matters more here than it looks: an
+# edit left unreverted makes the repo, rather than the command, decide which
+# experiment a later run measures — and the resulting rows are mislabelled in a
+# way nothing downstream can detect.
+#
+# This script requires root, and sudo strips the environment, so the assignment
+# has to go AFTER sudo or it is silently ignored:
+#
+#   sudo NOHZ_FULL_CPUS="1-3" bash install-kernel.sh   # config C
+#   sudo NOHZ_FULL_CPUS=""    bash install-kernel.sh   # config B
+#
+# Note the ${VAR-default} form, without the colon. ${VAR:-default} would treat an
+# empty value as unset and substitute "1-3", so asking for config B would silently
+# install config C — the exact mislabelling this variable is most able to cause.
+NOHZ_FULL_CPUS="${NOHZ_FULL_CPUS-1-3}"
 
 # === Sanity Checks ===
 echo -e "${GREEN}============================================${NC}"
