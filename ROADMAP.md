@@ -212,7 +212,7 @@ CONFIG=$(./bench-detect-config.sh)      # prints A, B or C; non-zero if unsure
 ```
 
 **Current headroom** (measured 2026-08-02): `tle-updater.sh` **397**,
-`run-latency-bench.sh` 392, `install-kernel.sh` 367, `run-sdr-bench.sh` **363**,
+`run-latency-bench.sh` 392, `install-kernel.sh` **383**, `run-sdr-bench.sh` 363,
 `01-build-kernel.sh` 319, `02c-sdr-userspace.sh` 298. `tle-updater.sh` is now the
 closest to the cap at 3 lines of headroom, and it is the awkward one: it shares
 nothing with the harnesses, so the helpers above do it no good and it would
@@ -347,11 +347,11 @@ isolated before any published number is generated.
   `CONFIG_IKCONFIG_PROC` added, and the `/proc/config.gz` read fixed (it was
   grepping the compressed bytes, which can never match).
 - [x] **Rebuild with `CONFIG_LOCALVERSION="-kosmos"`** — *done 2026-07-31 on
-  pi-server.* The build produced **`6.12.98-kosmos+`**, so the localversion took
-  effect and the module directories are separated. **Not yet installed or
-  booted**, so the version check in `02a-verify-kernel.sh` still reports FAIL
-  against the running stock kernel — expected until the first KosmOS boot, not a
-  regression. See step 9 for what remains.
+  pi-server, installed and booted by 2026-08-02.* The build produced
+  **`6.12.98-kosmos+`**, the localversion took effect, and the module directories
+  are separated. `02a-verify-kernel.sh` now reports **7 passed, 0 failed** on the
+  running kernel — the FAIL this entry used to predict was against the stock
+  kernel and is gone.
 - [x] **Install the tooling** — *done, `43d8368`.* `rt-tests` and `stress-ng`
   added behind their own prompt in 02-post-install.sh, deliberately separate
   from the SDR userspace install so Test 1 can run without building a toolchain
@@ -485,15 +485,32 @@ positioning leans harder on pillars 2 and 3.
    production host). It proved PREEMPT_RT works — a v0.1 result — but the bench
    box (pi-server) gets a fresh `-kosmos` build at step 9; it is not carried over.*
 ✅ Real-time scheduling (1000Hz tick, high-res timers)
-✅ Full dynticks (`CONFIG_NO_HZ_FULL`) — **activated** `43d8368`: `nohz_full` and
-   `rcu_nocbs` now on the KosmOS command line (CPUs 1-3 by default). Was
-   compiled but inert before that.
+⚠️ Full dynticks (`CONFIG_NO_HZ_FULL`) — **compiled in, and the installer knows
+   how to activate it, but it is NOT active on the running kernel.** Corrected
+   2026-08-02: this was marked ✅ on the strength of `43d8368` adding the
+   `nohz_full`/`rcu_nocbs` append to `install-kernel.sh`. The code was there; the
+   activation was not. The install that actually ran on pi-server used
+   `NOHZ_FULL_CPUS=""`, so `/boot/firmware/kosmos/cmdline.txt` carries neither
+   directive and `detect-config.sh` correctly reports **B**.
+   That is the right state for config B and nothing is broken — but it is a
+   textbook ✅-because-code-exists, and the rule against those exists precisely
+   because this one survived four commits and a hardware audit. **It becomes ✅
+   when config C boots and `detect-config.sh` prints C**, which is the same event
+   that proves the firmware reads `kosmos/cmdline.txt` rather than falling back to
+   the stock one — currently unprovable, since with no append the two files are
+   byte-identical.
 ✅ Kernel version string — the step-9 rebuild happened 2026-07-31 and produced
    **`6.12.98-kosmos+`**, so `CONFIG_LOCALVERSION` took effect and this kernel's
    modules land in their own directory. Built from the pinned commit
-   `f5a99b95`. ⏳ **Not yet installed or booted** — `uname -r` on pi-server still
-   reports the stock `6.12.62+rpt-rpi-2712`, which is config A and is exactly what
-   the baseline needs.
+   `f5a99b95`. ✅ **Installed and booted — confirmed on hardware 2026-08-02.**
+   pi-server runs `6.12.98-kosmos+`; `02a-verify-kernel.sh` reports **7 passed, 0
+   failed** (PREEMPT_RT in `uname -v`, 1000 Hz, governor `performance`, USB, AX.25,
+   `/proc/config.gz`). The RT kernel boots on real hardware and the localversion
+   separated the module directories as intended.
+   *(This entry read "not yet installed or booted" until 2026-08-02. The install
+   had in fact already happened; step 9 flagged it as unverifiable from off-box and
+   it went unchecked. Nothing was lost — but the plan built on top of it was wrong
+   for several days, which is the cost of carrying an assumption as a status.)*
 ⚠️ Performance CPU governor — **kernel default only; NOT what runs.** Observed on
    hardware 2026-07-29: the running governor is `ondemand` despite
    `CONFIG_CPU_FREQ_DEFAULT_GOV_PERFORMANCE=y`, because Pi OS / Debian override it
@@ -817,9 +834,10 @@ v0.2   ✅ DONE    SDR userspace tools installed (rtl_433, dump1090, predict)
 v0.25  ⏳ ACTIVE  RT kernel benchmark published (proof of claim — BEFORE the
                  SATCOM stack; Test 1 needs no dongle)
                  Harnesses + methodology written, thermal control added, kernel
-                 BUILT and pinned (6.12.98-kosmos+, f5a99b95) 07-31. Still no
-                 numbers: install, boot and all 18 result rows remain. Gate 0
-                 fully closed, so nothing blocks it but bench time at the box.
+                 BUILT and pinned (6.12.98-kosmos+, f5a99b95) 07-31, INSTALLED
+                 and BOOTED 08-02 — 02a verification 7/0 on real hardware.
+                 Still no numbers: all 18 result rows remain. Gate 0 fully
+                 closed, so nothing blocks it but bench time at the box.
 v0.3   ......    SatDump + GNU Radio + SDR++ (first satellite decode, pinned)
                  + gr-kosmos discontinuity probe (first custom block)
                  Install scripts written and pinned; no build has run.
@@ -934,32 +952,45 @@ of the repo on the Pi.
 **Then:**
 8. ~~Reorganize repo into target structure~~ ✅ — single commit, `git mv` with the
    packaging paths updated alongside
-9. **v0.25: rebuild, reinstall, run the benchmark.** ⏳ **Rebuild ✅ done
-   2026-07-31. Install, boot and the benchmark matrix all remain** — and they are
+9. **v0.25: rebuild, reinstall, run the benchmark.** ⏳ **Rebuild ✅ 2026-07-31.
+   Install and first boot ✅ 2026-08-02. The benchmark matrix remains** — and it is
    the part that needs a human at the hardware.
 
-   **Recommended order, and why it is not the obvious one: run config A first,
-   before installing anything.** pi-server is booted on stock
-   `6.12.62+rpt-rpi-2712` right now, which *is* config A. So the baseline third of
-   the results table can be filled with no kernel swap, no reboot and no risk —
-   and, more useful, it exercises the harness, the three new helpers and the
-   thermal gate end to end while still on a known-good kernel. If
-   `run-latency-bench.sh` has a bug, that finds it *now*, rather than after a
-   kernel swap when a failure is ambiguous between harness and kernel.
+   **Order is B → C → A, revised 2026-08-02.** The previous plan opened with
+   config A on the grounds that pi-server was still booted on stock and A was
+   therefore free. It was not still booted on stock: the install had already run,
+   and `detect-config.sh` reports **B**. A now costs a reboot like the others, and
+   the box is sitting on B, so running B from where it stands wastes nothing.
+   Two reboots total, the same as the old plan needed.
 
-   Then: install → reboot → confirm `uname -r` is `6.12.98-kosmos+` and `uname -v`
-   shows `PREEMPT_RT` → run B. Then set `NOHZ_FULL_CPUS="1-3"` → reboot → run C.
+   1. **B — run from the current boot.** No reboot. Smoke-test the harness first
+      with `--quick` and `KOSMOS_BENCH_OUT` pointed somewhere disposable (see the
+      warning below), then the full run.
+   2. **C — `sudo NOHZ_FULL_CPUS="1-3" bash kernel/install-kernel.sh` → reboot.**
+      Confirm `detect-config.sh` prints **C** before running the matrix. That check
+      is not a formality: it is the only evidence that the firmware reads
+      `kosmos/cmdline.txt` at all, because with no dynticks append that file is
+      byte-identical to the stock one and B is indistinguishable from a fallback.
+   3. **A — comment the two directives in the KosmOS block of `config.txt` →
+      reboot.** Confirm `detect-config.sh` prints **A**.
+
    Fill `uname -v` into `BENCHMARKS.md`, which is still marked *(fill after first
-   boot)*.
+   boot)*. Take the exact string from the box — `02a-verify-kernel.sh` confirms
+   `PREEMPT_RT` is in it, but the build banner has not been captured here.
+
+   ⚠️ **`--quick` rows are indistinguishable from real ones.**
+   `run-latency-bench.sh` appends to `results/summary.tsv` with no loop-count or
+   quick-mode column, so a 100k-loop smoke run leaves six rows that look
+   publishable. Always smoke-test with `KOSMOS_BENCH_OUT=/tmp/bench-smoke`.
+
+   ⚠️ **`summary.tsv` header is two columns short** — 7 headers written against 9
+   data fields, so the temperature and throttle-status columns land unlabelled in
+   the file the published tables get transcribed from. Fix before transcribing.
 
    **Budget it as a half-day, not an evening.** ~35 min per configuration is the
-   harness's own figure, so ~105 min of runtime, plus three reboots and — new —
-   thermal cool-down between runs, which the gate will enforce whether or not it is
-   planned for.
-
-   ⚠️ **Unverified from off-box: whether `install-kernel.sh` has already run.**
-   Check `config.txt` for the `os_prefix=kosmos/` block before assuming a reboot
-   lands on stock. Test 1 needs no dongle; Test 2 waits on the RTL-SDR v4.
+   harness's own figure, so ~105 min of runtime, plus two reboots and thermal
+   cool-down between runs, which the gate will enforce whether or not it is planned
+   for. Test 1 needs no dongle; Test 2 waits on the RTL-SDR v4.
 
    **Bench box = pi-server** (see Hardware Topology). No reboot-window constraint:
    swaps, crashes and reflashes are expected there — *once gate 0 below is met.*
