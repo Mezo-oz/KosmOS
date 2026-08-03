@@ -276,31 +276,41 @@ files are the evidence; the tables below are the summary.
 
 Latencies in microseconds.
 
-| Config | Load | Min | Avg | **Max** |
-|---|---|---|---|---|
-| A — stock | idle | | | |
-| A — stock | cpu | | | |
-| A — stock | io | | | |
-| B — RT | idle | | | |
-| B — RT | cpu | | | |
-| B — RT | io | | | |
-| C — RT + dynticks | idle | | | |
-| C — RT + dynticks | cpu | | | |
-| C — RT + dynticks | io | | | |
+*Run 2026-07-31 (A) and 2026-08-02 (B, C). 1M loops at 200 µs, priority 90,
+governor `performance` on every row.*
+
+| Config | Load | Min | Avg | **Max** | Thermal |
+|---|---|---|---|---|---|
+| A — stock | idle | 1 | 1 | **3257** | clean |
+| A — stock | cpu | 1 | 1 | 74 | ⚠️ THROTTLED |
+| A — stock | io | 1 | 3 | **6262** | clean |
+| B — RT | idle | 1 | 1 | **13** | clean |
+| B — RT | cpu | 1 | 2 | 18 | ⚠️ THROTTLED |
+| B — RT | io | 1 | 2 | **175** | clean |
+| C — RT + dynticks | idle | 1 | 2 | **4844** | clean |
+| C — RT + dynticks | cpu | 2 | 3 | 28 | ⚠️ THROTTLED |
+| C — RT + dynticks | io | 2 | 4 | 346 | clean |
 
 ### Test 1 results — `pinned` (CPUs 1–3)
 
-| Config | Load | Min | Avg | **Max** |
-|---|---|---|---|---|
-| A — stock | idle | | | |
-| A — stock | cpu | | | |
-| A — stock | io | | | |
-| B — RT | idle | | | |
-| B — RT | cpu | | | |
-| B — RT | io | | | |
-| C — RT + dynticks | idle | | | |
-| C — RT + dynticks | cpu | | | |
-| C — RT + dynticks | io | | | |
+| Config | Load | Min | Avg | **Max** | Thermal |
+|---|---|---|---|---|---|
+| A — stock | idle | 1 | 1 | 62 | clean |
+| A — stock | cpu | 1 | 2 | 140 | ⚠️ THROTTLED |
+| A — stock | io | 1 | 3 | **6161** | clean |
+| B — RT | idle | 1 | 1 | 12 | clean |
+| B — RT | cpu | 1 | 2 | 13 | ⚠️ THROTTLED |
+| B — RT | io | 1 | 2 | **293** | clean |
+| C — RT + dynticks | idle | 1 | 2 | 17 | clean |
+| C — RT + dynticks | cpu | 2 | 3 | 20 | ⚠️ THROTTLED |
+| C — RT + dynticks | io | 1 | 3 | **36** | clean |
+
+⚠️ **Every `cpu`-load row throttled, in all three configurations.** Sustained
+all-core `stress-ng --cpu 4` saturates this hardware's cooling with the fan
+already at maximum. Per the standing decision, a throttled row is published with
+the flag rather than re-rolled — but the CPU-load comparison is the weakest of
+the three and should not be leaned on. The `idle` and `io` rows are `clean`
+throughout, and they carry the result.
 
 ### Test 1 deltas
 
@@ -309,12 +319,69 @@ table.
 
 | Delta | Load | Δ Avg | **Δ Max** | What it means |
 |---|---|---|---|---|
-| B − A | idle | | | `PREEMPT_RT`, unloaded |
-| B − A | cpu | | | `PREEMPT_RT` under CPU load |
-| B − A | io | | | `PREEMPT_RT` under IO load |
-| C − B | idle | | | core isolation, unloaded |
-| C − B | cpu | | | core isolation under CPU load |
-| C − B | io | | | core isolation under IO load |
+| B − A | idle | 0 | **−3244 µs** (250× better) | `PREEMPT_RT`, unloaded |
+| B − A | cpu | +1 | −56 µs (4.1× better) ⚠️ | `PREEMPT_RT` under CPU load |
+| B − A | io | −1 | **−6087 µs** (35.8× better) | `PREEMPT_RT` under IO load |
+| C − B | idle | +1 | +5 µs (worse) | core isolation, unloaded |
+| C − B | cpu | +1 | +7 µs (worse) ⚠️ | core isolation under CPU load |
+| C − B | io | +1 | **−257 µs** (8.1× better) | core isolation under IO load |
+
+⚠️ = both rows throttled; treat as indicative only.
+
+### What the numbers say
+
+**PREEMPT_RT is a large win, and the win is entirely in the tail.** Average
+latency is 1–4 µs in every configuration under every load — the kernels are
+indistinguishable on the mean. Worst case under IO load goes from **6.3 ms to
+175 µs**, which is the number this benchmark existed to produce. For SDR capture
+that is the difference between a dropped buffer and a clean one.
+
+**Core isolation is not a free upgrade — it is a trade.** On the isolated cores
+it is a clear win under IO load (293 → 36 µs, 8.1×), and a small loss at idle
+(12 → 17 µs) where there is no interference to remove and only the extra
+bookkeeping shows. Config C is worth it for pinned RT work and not otherwise.
+
+**The unpinned idle tail is a CPU 0 effect, and it appears in A and C but not
+B.** Stock reads 3257 µs unpinned against 62 µs pinned; config C reads 4844 µs
+against 17 µs. Config B shows no such split (13 vs 12 µs). The mechanism differs
+between the two — in A it is the ordinary non-preemptible kernel, in C it is the
+housekeeping core absorbing the timer and RCU-callback work offloaded from CPUs
+1–3 by `nohz_full`/`rcu_nocbs` — but the practical consequence is the same:
+
+> **`nohz_full` reintroduces a stock-kernel-sized latency tail on the
+> housekeeping core.** Work that is not pinned to the isolated cores is worse off
+> under config C than under plain PREEMPT_RT. Isolation is a promise about where
+> the work runs, not about the machine as a whole.
+
+That is the single most useful operational finding here, and it is only visible
+because both affinity modes were run in every configuration. The decision to pay
+~35 minutes per config instead of ~18 bought exactly this: without the pinned
+rows, C's isolation win would be invisible, and without the unpinned rows, its
+housekeeping-core cost would be.
+
+**Caveat on the two big unpinned idle numbers.** 3257 µs and 4844 µs are single
+samples. The mechanism is understood and the A/C-versus-B split is consistent
+with it, but neither has been reproduced. Treat the *pattern* as established and
+the *magnitudes* as provisional until a repeat run.
+
+### Repeatability
+
+Config B was run twice in the same boot, unintentionally. The two passes agree
+closely, which is a free check on harness stability:
+
+| Load / affinity | Pass 1 max | Pass 2 max |
+|---|---|---|
+| idle / whole | 13 | 13 |
+| idle / pinned | 12 | 12 |
+| cpu / whole | 17 | 18 |
+| cpu / pinned | 15 | 13 |
+| io / whole | 146 | 175 |
+| io / pinned | 200 | 293 |
+
+Pass 2 is the one in the tables above, chosen because its raw files survive —
+`summary.tsv` appends while raw files are overwritten per run, so pass 1's
+evidence was destroyed by pass 2. The IO rows show the most spread, which is
+expected: they are the runs with the most competing work and the longest tail.
 
 ---
 

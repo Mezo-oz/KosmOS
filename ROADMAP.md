@@ -833,8 +833,15 @@ v0.25  ⏳ ACTIVE  RT kernel benchmark published (proof of claim — BEFORE the
                  Harnesses + methodology written, thermal control added, kernel
                  BUILT and pinned (6.12.98-kosmos+, f5a99b95) 07-31, INSTALLED
                  and BOOTED 08-02 — 02a verification 7/0 on real hardware.
-                 Still no numbers: all 18 result rows remain. Gate 0 fully
-                 closed, so nothing blocks it but bench time at the box.
+                 TEST 1 COMPLETE: all 18 rows measured across A/B/C.
+                 Headline — worst-case latency under IO load 6262 us (stock)
+                 to 175 us (RT), a 35.8x reduction; averages identical, so the
+                 whole win is in the tail. Core isolation is a trade, not a
+                 free upgrade: 8.1x better on isolated cores under IO load,
+                 slightly worse at idle, and it puts a stock-sized tail back
+                 on the housekeeping core. Remaining for v0.25: capture
+                 `uname -v`, and Test 2 (dropped samples), which waits on the
+                 RTL-SDR v4 dongle.
 v0.3   ......    SatDump + GNU Radio + SDR++ (first satellite decode, pinned)
                  + gr-kosmos discontinuity probe (first custom block)
                  Install scripts written and pinned; no build has run.
