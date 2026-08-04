@@ -287,7 +287,7 @@ governor `performance` on every row.*
 | B — RT | idle | 1 | 1 | **13** | clean |
 | B — RT | cpu | 1 | 2 | 18 | ⚠️ THROTTLED |
 | B — RT | io | 1 | 2 | **175** | clean |
-| C — RT + dynticks | idle | 1 | 2 | **4844** | clean |
+| C — RT + dynticks | idle | 1 | 2 | 4844 ⚠️ *not reproduced — see below* | clean |
 | C — RT + dynticks | cpu | 2 | 3 | 28 | ⚠️ THROTTLED |
 | C — RT + dynticks | io | 2 | 4 | 346 | clean |
 
@@ -319,7 +319,7 @@ table.
 
 | Delta | Load | Δ Avg | **Δ Max** | What it means |
 |---|---|---|---|---|
-| B − A | idle | 0 | **−3244 µs** (250× better) | `PREEMPT_RT`, unloaded |
+| B − A | idle | 0 | −3244 µs ⚠️ **unconfirmed** | `PREEMPT_RT`, unloaded |
 | B − A | cpu | +1 | −56 µs (4.1× better) ⚠️ | `PREEMPT_RT` under CPU load |
 | B − A | io | −1 | **−6087 µs** (35.8× better) | `PREEMPT_RT` under IO load |
 | C − B | idle | +1 | +5 µs (worse) | core isolation, unloaded |
@@ -341,28 +341,43 @@ it is a clear win under IO load (293 → 36 µs, 8.1×), and a small loss at idl
 (12 → 17 µs) where there is no interference to remove and only the extra
 bookkeeping shows. Config C is worth it for pinned RT work and not otherwise.
 
-**The unpinned idle tail is a CPU 0 effect, and it appears in A and C but not
-B.** Stock reads 3257 µs unpinned against 62 µs pinned; config C reads 4844 µs
-against 17 µs. Config B shows no such split (13 vs 12 µs). The mechanism differs
-between the two — in A it is the ordinary non-preemptible kernel, in C it is the
-housekeeping core absorbing the timer and RCU-callback work offloaded from CPUs
-1–3 by `nohz_full`/`rcu_nocbs` — but the practical consequence is the same:
+**RETRACTED — the C unpinned idle figure did not reproduce.** An earlier revision
+of this document read the 4844 µs in the `C / idle / whole` cell as evidence that
+`nohz_full` reintroduces a stock-sized latency tail on the housekeeping core, and
+stated it as a finding. Three repeat runs on 2026-08-03, same command, same boot,
+settled box, returned **11, 9 and 29 µs** with zero histogram overflows — nothing
+in three million samples exceeded 400 µs. The claim was wrong and is withdrawn.
 
-> **`nohz_full` reintroduces a stock-kernel-sized latency tail on the
-> housekeeping core.** Work that is not pinned to the isolated cores is worse off
-> under config C than under plain PREEMPT_RT. Isolation is a promise about where
-> the work runs, not about the machine as a whole.
+The 4844 µs sample was the first run of the C matrix, executed immediately after
+the reboot into config C. Residual post-boot activity settling is a more
+parsimonious explanation than a structural property of dynticks, and it fits the
+sample's position exactly. The row is left in the table because it is what the
+instrument recorded; it should not be read as a property of the configuration.
 
-That is the single most useful operational finding here, and it is only visible
-because both affinity modes were run in every configuration. The decision to pay
-~35 minutes per config instead of ~18 bought exactly this: without the pinned
-rows, C's isolation win would be invisible, and without the unpinned rows, its
-housekeeping-core cost would be.
+**What survives is smaller and better supported.** Per-thread maxima across the
+three repeats:
 
-**Caveat on the two big unpinned idle numbers.** 3257 µs and 4844 µs are single
-samples. The mechanism is understood and the A/C-versus-B split is consistent
-with it, but neither has been reproduced. Treat the *pattern* as established and
-the *magnitudes* as provisional until a repeat run.
+| Run | T0 (housekeeping) | T1 | T2 | T3 |
+|---|---|---|---|---|
+| 1 | **11** | 8 | 8 | 6 |
+| 2 | 8 | 6 | 9 | 5 |
+| 3 | **29** | 8 | 8 | 6 |
+
+CPU 0 carries the worst sample in every run and peaks at 29 µs against 9 µs on
+the isolated cores — roughly 3× worse, consistently, in the direction the
+offloading mechanism predicts. So the housekeeping core *is* the weak point under
+`nohz_full`, and pinning RT work to the isolated cores remains the right practice.
+The cost of not doing so is tens of microseconds, not milliseconds.
+
+**The methodology point stands regardless.** Running both affinity modes in every
+configuration is what made C's isolation win measurable at all, and it is also
+what exposed the bad sample — a single-affinity run would have published 4844 µs
+with nothing to check it against.
+
+⚠️ **`A / idle / whole` (3257 µs) has not yet been re-verified.** It occupies the
+identical position — first run of its matrix, immediately post-boot — and is the
+sole support for the `B − A idle` delta below. Pending a repeat on stock, treat
+that one delta as unconfirmed. The `io` and `cpu` rows are unaffected.
 
 ### Repeatability
 
