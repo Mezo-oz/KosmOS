@@ -12,6 +12,7 @@
 # module, a CMake file. None of these tolerate stray carriage returns well, and
 # a workflow that fails only on someone else's checkout is a bad way to find out.
 *.service text eol=lf
+*.timer text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
 *.py text eol=lf

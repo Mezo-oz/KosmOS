@@ -125,7 +125,7 @@ jobs:
               # Only the files where a CR actually breaks something. Markdown is
               # deliberately not here: a CRLF in prose is harmless, and gating on
               # it would fail for anyone working from a Windows checkout.
-              *.sh|*.config|*.service|*.yml|*.yaml|*.py|*.txt|*.cmake) ;;
+              *.sh|*.config|*.service|*.timer|*.yml|*.yaml|*.py|*.txt|*.cmake) ;;
               *) continue ;;
             esac
             [ -f "$f" ] || continue
@@ -142,6 +142,10 @@ jobs:
           fi
           echo "ok — no CR bytes"
 
+      # Engineering standard 1 says "≤400 lines per file", not "≤400 lines per
+      # shell script". Python was in scope from the day the standard was written
+      # -- it names Python as the second language -- but this gate only globbed
+      # *.sh, so the rule went ungated for exactly the files most likely to grow.
       - name: No script over ${{ env.MAX_SCRIPT_LINES }} lines
         run: |
           set -euo pipefail
@@ -155,5 +159,5 @@ jobs:
             else
               printf '%-40s %5d\n' "$f" "$n"
             fi
-          done < <(git ls-files '*.sh')
+          done < <(git ls-files '*.sh' '*.py')
           exit "$rc"
