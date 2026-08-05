@@ -3,3 +3,8 @@ linux/
 kosmos-kernel-pkg/
 kosmos-kernel-*.tar.gz
 *.o
+
+# Running gr-kosmos's unit tests produces these. They only started appearing
+# once there were tests that could actually be run off the Pi.
+__pycache__/
+*.pyc

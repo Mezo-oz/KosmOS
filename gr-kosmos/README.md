@@ -3,8 +3,11 @@
 
 Out-of-tree GNU Radio blocks for KosmOS.
 
-**Status: scaffold.** One block exists as a skeleton with no detection logic. It
-loads, it passes samples through unchanged, and it does not measure anything yet.
+**Status: implemented, half-verified — deliberately.** The probe's clock
+arithmetic lives in `gap_math.py` (standard library only) and is covered by
+`test_gap_math.py`, which runs on any machine with Python. The GNU Radio block
+shell is thin glue around it and **has never run under GNU Radio** — see
+"Verified, and not" below for exactly where that line sits.
 
 ## The custom-block rule
 
@@ -41,6 +44,19 @@ the one non-obvious part — a `sync_block` cannot see a gap by looking at its
 input buffer, because the buffer is always contiguous. The gap is visible only in
 the `rx_time` stream tags the hardware source emits.
 
+The measurement itself is split into `gap_math.py` so it can be unit-tested
+without GNU Radio installed. The split is load-bearing for correctness, not just
+testability: an `rx_time` timestamp is a PMT `(whole seconds, fractional
+seconds)` pair, and collapsing it into one double loses ~4e-7 s of resolution at
+epoch scale — *more than one sample period at 2.4 MS/s*, i.e. exactly the gaps
+the probe exists to catch. `gap_math.py` documents this and
+`test_gap_math.py::test_one_sample_gap_at_epoch_scale_with_zero_tolerance`
+proves the pair arithmetic keeps the sample. Run the tests with:
+
+```bash
+cd gr-kosmos/python/kosmos && python3 -m unittest test_gap_math
+```
+
 ## Layout
 
 ```
@@ -52,7 +68,9 @@ gr-kosmos/
 └── python/
     └── kosmos/
         ├── __init__.py
-        └── discontinuity_probe.py
+        ├── discontinuity_probe.py              GNU Radio shell (thin glue)
+        ├── gap_math.py                         the measurement — stdlib only
+        └── test_gap_math.py                    runs anywhere Python runs
 ```
 
 ## Why there is no CMakeLists.txt
@@ -99,7 +117,13 @@ it.
 
 ## Verified, and not
 
-- Both Python files byte-compile, and the GRC YAML parses.
-- **Nothing here has been run under GNU Radio.** There is no GNU Radio on the
-  machine this was written on, and the Pi has not built the stack yet. First run
-  is the test.
+- `gap_math.py` is **unit-tested and green** (14 tests: gap sizes, tolerance
+  boundary, fractional-second borrow, negative gaps, rebaseline-after-gap,
+  one-sample gap at epoch-scale time with zero tolerance).
+- All Python files byte-compile, and the GRC YAML parses.
+- **The block shell has never been run under GNU Radio.** There is no GNU Radio
+  on the machine this was written on, and the Pi has not built the stack yet.
+  What first run must confirm is exactly the glue: that `rx_time` tags arrive,
+  that `_unpack_rx_time` matches the source's actual PMT encoding (tuple vs
+  pair — it accepts both), and that the log write behaves. The arithmetic
+  behind them is already proven.
