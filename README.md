@@ -41,8 +41,15 @@ RTL-SDR raw I/Q driver path and the full AX.25 amateur radio stack.
 
 **Build host**
 
-- Any **ARM64 (aarch64)** Linux machine with `sudo`, at least 4 GB RAM and 40 GB free
+- Any **ARM64 (aarch64)** Linux machine with `sudo`, at least 4 GB RAM and 10 GB free
   disk. A Debian ARM64 VM works; so does another Pi.
+  - **Both figures are measured, not estimated.** The 2026-07-31 build on a 4 GB Pi 5
+    at `JOBS=3` consumed **~4 GB of disk** — shallow clone plus object tree — and
+    never dropped below **2903 MB free RAM**, with a 4 MB peak on swap. 10 GB leaves
+    room for the packaged tarball and a second build without a clean-out. An earlier
+    revision of this line said 40 GB, which was inferred from kernel builds that keep
+    debug info; `sdr-rt.config` sets `CONFIG_DEBUG_INFO_NONE=y`, and that is the
+    difference.
 - No cross-compiler is used. The build is native, which is why the host must be
   ARM64. Building on an x86_64 machine will not work with these scripts as written.
 
@@ -82,6 +89,10 @@ in the kernel tarball, because none of it is needed to get the kernel running.
 | `benchmarks/run-sdr-bench.sh` | Pi | Test 2 — `rtl_test` sample-loss sweep. Needs the dongle |
 | `benchmarks/BENCHMARKS.md` | — | Methodology and results for the RT proof of claim |
 | `automation/tle-updater.sh` | Pi | Refreshes orbital elements; writes the file `predict` reads |
+| `automation/install-tle-timer.sh` | Pi | Installs the twice-daily TLE refresh timer for one user |
+| `automation/kosmos-tle-update@.service` | Pi | The refresh itself. Template unit — the instance name is the username |
+| `automation/kosmos-tle-update@.timer` | Pi | The schedule: 05:17 and 17:17, spread, and persistent across downtime |
+| `automation/rtl-power-heatmap.py` | Pi | Plots an `rtl_power` CSV sweep as a spectrum heatmap PNG |
 | `automation/install-governor.sh` | Pi | Installs the boot-time performance-governor unit |
 | `automation/kosmos-governor.service` | Pi | The unit itself |
 | `automation/kosmos-set-governor.sh` | Pi | The governor write, installed to `/usr/local/sbin` |
@@ -371,6 +382,75 @@ each TLE line carries, it confirms the returned elements actually carry the
 catalogue number that was asked for — a typo otherwise fetches a valid TLE for the
 wrong satellite, which has no symptom other than an antenna pointing at nothing —
 and it writes `~/.predict/predict.tle`, the only file `predict` reads.
+
+### Seeing what the band is doing
+
+`rtl_power` sweeps a range and writes a CSV; `rtl-power-heatmap.py` turns that
+into a picture. No dongle is needed to run the plotter — the CSV is just a file —
+so this is the one piece of the SDR chain you can work on away from the hardware.
+
+```bash
+rtl_power -f 137M:138M:2k -i 10 -e 1h scan.csv    # sweep the APT band for an hour
+./automation/rtl-power-heatmap.py scan.csv -o scan.png
+./automation/rtl-power-heatmap.py scan.csv --summary   # is the capture any good?
+```
+
+`--summary` imports nothing outside the standard library, deliberately: on a
+headless box the first question is whether the sweep worked, and answering it
+should not depend on matplotlib being installed. The plot needs it:
+
+```bash
+sudo apt-get install -y python3-numpy python3-matplotlib
+```
+
+**One row of an rtl_power CSV is a chunk, not a sweep.** Any range wider than the
+dongle's bandwidth is split across several rows, and only the whole set is one
+line of the waterfall — the common mistake is plotting one row per output line,
+which draws the chunking pattern rather than the band. Sweeps here are cut on
+frequency wrap-around rather than on the timestamp, because chunk timestamps
+within a sweep are not reliably identical.
+
+**The default colormap is viridis, not `jet`.** `jet` is the SDR convention and
+also the most criticised colormap in scientific visualisation: its lightness is
+not monotonic, so it invents banded "features" at the cyan and yellow turns that
+are not in your data, and it is close to unreadable with red-green color vision
+deficiency. With viridis, brighter is stronger with no exceptions. `--cmap jet`
+if you want the old look anyway.
+
+The dB figures are **uncalibrated** and every axis says so. An RTL-SDR has no
+absolute power reference — the numbers compare within one capture and are not
+dBm.
+
+### Keeping them fresh without remembering to
+
+An unattended box should not depend on someone running that command. Install the
+timer instead — twice daily, spread by up to 15 minutes so every KosmOS install
+does not hit CelesTrak on the same minute, and persistent so a box that was off
+through both windows updates when it comes back rather than staying a day stale:
+
+```bash
+sudo bash automation/install-tle-timer.sh          # for whoever ran sudo
+sudo bash automation/install-tle-timer.sh --user homelab
+```
+
+It installs a **template unit keyed on the username**, because the elements land
+under that user's `$HOME` and a root-owned copy in `/root` is one `predict` will
+never open. Enabling it for the wrong account is the failure this shape prevents:
+the timer would run, succeed, and maintain elements nobody reads.
+
+The install runs one update immediately (`--no-run` to skip), so you find out
+then rather than during a pass. After that, the unit's exit status is the answer:
+
+```bash
+systemctl status kosmos-tle-update@homelab.service
+systemctl list-timers kosmos-tle-update@homelab.timer
+```
+
+`tle-updater.sh` exits non-zero if any source failed to fetch or validate, and it
+installs only what it could validate — so a failed refresh is a failed unit *and*
+leaves the previous good elements untouched. `sudo bash automation/install-tle-timer.sh
+--uninstall` removes all of it. Without systemd, the cron line in the script's
+header does the same job with less reporting.
 
 ## License
 

@@ -211,9 +211,19 @@ detection returns the configuration letter on stdout:
 CONFIG=$(./bench-detect-config.sh)      # prints A, B or C; non-zero if unsure
 ```
 
-**Current headroom** (measured 2026-08-03): `tle-updater.sh` **397**,
-`run-latency-bench.sh` **396**, `install-kernel.sh` 383, `run-sdr-bench.sh` 363,
-`01-build-kernel.sh` 319, `02c-sdr-userspace.sh` 298. Two files now sit within
+**Current headroom** (measured 2026-08-05): `tle-updater.sh` **397**,
+`run-latency-bench.sh` **396**, `install-kernel.sh` 383, `rtl-power-heatmap.py`
+**377**, `run-sdr-bench.sh` 363, `01-build-kernel.sh` 319, `02c-sdr-userspace.sh`
+298, `install-tle-timer.sh` 249.
+
+**The cap now gates Python too.** Standard 1 says "≤400 lines per file" and this
+document has named Python a first-class language since the standards were
+adopted, but the CI step globbed `*.sh` only — so the rule was unenforced for
+exactly the files most likely to grow into it. Fixed 2026-08-05; the glob is now
+`'*.sh' '*.py'`. `rtl-power-heatmap.py` enters the table third from the top, so
+this was not a hypothetical gap.
+
+Two files now sit within
 four lines of the cap, so the next change to either is what fires the trigger —
 and for `run-latency-bench.sh` the helpers are already written, so that conversion
 is cheap. `tle-updater.sh` is now the
@@ -442,9 +452,38 @@ boots — that is what `os_prefix` bought.
 **Instrumentation upgrade — the first custom GNU Radio block:**
 - [~] **`gr-kosmos` sample-discontinuity probe** — an inline block that watches
   the sample stream for discontinuities and logs a timestamped record of every
-  gap (the "gauge in the pipe"). *Scaffolded: block skeleton, GRC definition and
-  a development installer exist and are consistent with each other. No detection
-  logic, and nothing has run under GNU Radio.*
+  gap (the "gauge in the pipe"). *Implemented 2026-08-05, and **split so that
+  half of it is actually tested**: the clock arithmetic lives in `gap_math.py`,
+  imports nothing outside the standard library, and is covered by 15 unit tests
+  that run on any machine with a Python interpreter. **15/15 pass.** What remains
+  untested is the thin part — tag unpacking, the pass-through copy, the log
+  write — and it has still never run under GNU Radio.*
+  - **Why the split, and why it is not a house-rule violation.** "Helpers are
+    subprocesses, never sourced libraries" is a *shell* rule; it exists so
+    shellcheck stays clean without `-x`. A Python import inside one package is
+    ordinary module structure, and a subprocess per `work()` call in a flowgraph
+    would be absurd. What the split buys is the thing this project actually
+    rations: it moves the measurement out of a file that cannot execute without
+    GNU Radio and into one that can.
+  - ⚠️ **The precision argument was overstated and is now corrected.** The
+    original note said a double's ulp at epoch scale (~1.7e9 s) is "about 4e-7 s
+    — LARGER than one sample period at 2.4 MS/s", making a one-sample gap
+    unrepresentable. Measured: the ulp is **2.384e-7 s**, which is **0.57** of a
+    sample period at 2.4 MS/s, so it is smaller, and `round()` absorbs error
+    below 0.5. The conclusion survives on a narrower argument that is true:
+    at **3.2 MS/s** — the top of `run-sdr-bench.sh`'s sweep, included precisely
+    because it is where the kernels should diverge most — the ulp is **0.76** of
+    a sample, past the rounding boundary, and collapsing the pair reports a
+    one-sample gap as two. That case is now a regression test that fails if
+    anyone "simplifies" `pair_delta`.
+  - ⚠️ **The documented way to run the tests did not work** and is corrected.
+    `python3 -m unittest <path>` takes a dotted module name, not a path; running
+    them as `kosmos.test_gap_math` executes `__init__.py`, which imports the
+    probe, which imports gnuradio — defeating the point; and discovery from the
+    repo root fails because `gr-kosmos` is not a valid Python identifier. The one
+    working invocation is
+    `cd gr-kosmos/python/kosmos && python3 -m unittest test_gap_math`, and the
+    reasons are recorded in the file so it does not get "fixed" back.
   - **The design note worth keeping:** a `sync_block` cannot see a gap by
     inspecting its input buffer — the buffer is always contiguous no matter what
     the radio dropped. The gap is visible only in the `rx_time` stream tags a
@@ -593,7 +632,24 @@ first run on pi-server is the test.*
   - predict tracks at most 24 satellites from that one file, so the predict set
     is an explicit catalogue-number list and the bulk groups go to
     `~/.config/satellite-tle/` for gpredict and SatDump instead.
-  - Still to do: put it on a timer (cron line is in the script header).
+  - ~~Still to do: put it on a timer~~ ✅ **2026-08-05** —
+    `kosmos-tle-update@.service` + `kosmos-tle-update@.timer`, installed by
+    `automation/install-tle-timer.sh`. Twice daily at 05:17/17:17 with a 15-minute
+    random spread, `Persistent=true` so a box that was powered off through both
+    windows catches up instead of staying a day stale.
+    - **A template unit, keyed on the username.** The updater writes under
+      `$HOME`; run as root it would maintain elements in `/root` that predict
+      never opens, which fails silently because predict answers from its shipped
+      elements with no sign they are stale. The instance name is the account, so
+      systemd's own `%i` supplies it and the repo ships a valid unit rather than
+      one the installer rewrites.
+    - Chosen over the cron line for exit status: the updater already exits
+      non-zero on any fetch or checksum failure, so as a unit `systemctl status`
+      becomes a truthful answer to "are my elements current". The cron line stays
+      in the script header for anyone without systemd.
+    - ⚠️ **Written and linted, never executed** — installing a systemd unit needs
+      a systemd box, so this has had no run on pi-server. Argument parsing was
+      exercised locally; nothing past the `systemctl` check has been.
 - [ ] **Rotator control support** (hamlib / rotctld)
   - For automated antenna pointing during passes
   - Uses serial/USB to talk to antenna rotator hardware
@@ -611,7 +667,35 @@ first run on pi-server is the test.*
   - Post-capture analysis of I/Q recordings
   - Like opening a pcap in Wireshark after the capture
 - [ ] **Terminal spectrum tools**
-  - rtl_power → CSV heatmap pipeline (Python/matplotlib)
+  - ~~rtl_power → CSV heatmap pipeline (Python/matplotlib)~~ ✅ **2026-08-05**,
+    `automation/rtl-power-heatmap.py`. **The one item in this phase that has
+    actually been run** — it needs no dongle, because an rtl_power CSV is just a
+    file, so it was developed against synthetic captures and verified end to end.
+    - **A row is a chunk, not a sweep.** rtl_power splits any range wider than the
+      dongle's bandwidth across several rows, so one line of the waterfall is a
+      set of them. Plotting one row per output line draws the chunking pattern
+      instead of the band, which is the mistake this was written to not make.
+      Sweeps are cut on **frequency wrap-around**, not on the timestamp: chunk
+      timestamps within a sweep are not reliably identical, and grouping by them
+      splits one pass in two.
+    - **Not `jet`.** SDR convention is the one colormap scientific visualisation
+      has spent twenty years arguing against — non-monotonic lightness invents
+      banded features at the cyan and yellow turns, and it fails under red-green
+      CVD. Default is viridis, where brighter always means stronger. `--cmap`
+      overrides for anyone who wants the old look. Coverage gaps draw in neutral
+      grey rather than matplotlib's default white, which on a viridis ramp reads
+      as the strongest signal in the capture.
+    - **`--summary` imports nothing outside the standard library**, and the plot
+      path imports numpy and matplotlib lazily to keep that true. On a headless
+      box the first question is whether the capture is any good, and answering it
+      should not require a working matplotlib.
+    - dB is labelled **uncalibrated** on every axis it appears on. An RTL-SDR has
+      no absolute power reference; the figures compare within one capture and are
+      not dBm.
+    - Verified: 24-sweep and 1-sweep captures, `-inf` bins, a truncated row, a
+      changed bin width mid-file, an empty file and a missing file. Single-sweep
+      input renders a spectrum line plot rather than a one-pixel-tall heatmap.
+      pyflakes and pycodestyle clean; 377 lines.
   - Custom script to generate live terminal waterfall
   - Useful for headless/SSH field work where GUI isn't available
 
@@ -848,7 +932,8 @@ v0.25  ⏳ ACTIVE  RT kernel benchmark published (proof of claim — BEFORE the
 v0.3   ......    SatDump + GNU Radio + SDR++ (first satellite decode, pinned)
                  + gr-kosmos discontinuity probe (first custom block)
                  Install scripts written and pinned; no build has run.
-                 Probe is a skeleton with no detection logic.
+                 Probe implemented; its math is unit-tested, its GNU
+                 Radio shell has never run.
 v0.4   ......    Automated capture pipeline (scheduled sat passes)
 v0.5   ......    Protocol decoders (Iridium, AIS, APRS/direwolf)
                  + gr-satellites upstream PR; revisit IceSickle decoder
@@ -889,7 +974,7 @@ KosmOS/
 │   ├── ✅ README.md             # Includes why there is no CMakeLists.txt
 │   ├── ✅ install.sh            # Development install (.pth + GRC yml)
 │   ├── ✅ grc/                  # GRC block definitions
-│   └── ✅ python/kosmos/        # discontinuity probe — skeleton, no logic yet
+│   └── ✅ python/kosmos/        # discontinuity probe + gap_math.py & its tests
 ├── userspace/
 │   ├── ✅ 02-post-install.sh    # Sequencer over 02a-02d
 │   ├── ✅ 02a-verify-kernel.sh  # Kernel verification, read-only
@@ -903,6 +988,10 @@ KosmOS/
 │   └── ·  04-protocol-decoders.sh  # Iridium, AIS, direwolf (Phase 2)
 ├── automation/
 │   ├── ✅ tle-updater.sh        # TLE refresh; writes ~/.predict/predict.tle
+│   ├── ✅ kosmos-tle-update@.service # The refresh as a unit; instance = username
+│   ├── ✅ kosmos-tle-update@.timer   # Twice daily, spread, persistent
+│   ├── ✅ install-tle-timer.sh  # Installs the timer for one account
+│   ├── ✅ rtl-power-heatmap.py  # rtl_power CSV → spectrum heatmap PNG
 │   ├── ✅ kosmos-governor.service  # Pins the CPU governor at boot
 │   ├── ✅ kosmos-set-governor.sh   # The governor write itself
 │   ├── ✅ install-governor.sh   # Installs the unit; masks ondemand.service
@@ -1148,8 +1237,9 @@ of the repo on the Pi.
 
    - **Disk.** The `CONFIG_DEBUG_INFO_NONE=y` reasoning held: debug info is what
      makes kernel object trees enormous, and without it the tree stayed at ~4 GB.
-     **The README's 40 GB figure is confirmed far too conservative and should be
-     revisited** — it is now measured rather than inferred.
+     **The README's 40 GB figure was confirmed far too conservative.** ✅ **Revised
+     2026-08-05** to 10 GB, with both the disk and RAM figures stated as measured
+     and the `CONFIG_DEBUG_INFO_NONE=y` reason recorded beside them.
    - **RAM.** `JOBS=3` never came close to pressure, and the ~1.5 GB-per-job
      warning proved pessimistic for this configuration. `JOBS=4` is plausibly fine
      too, though untested; there is no reason to find out, since the build is not

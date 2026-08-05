@@ -1,9 +1,17 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # KosmOS RT Kernel Benchmark
 
-**Status: no results yet.** The harnesses are written; nothing has been measured.
-Every table below is empty on purpose — they are the forms to fill in, and an
-empty cell is honest where an estimate would not be.
+**Status: Test 1 complete, Test 2 not started.** All three configurations —
+stock, `PREEMPT_RT`, `PREEMPT_RT` + dynticks — have been measured for scheduling
+latency on pi-server, in both affinity modes, and the tables are filled in. The
+headline is `B − A` under IO load: worst-case latency **6262 µs → 175 µs, 35.8×**.
+
+Test 2 (dropped SDR samples) has no dongle on hand, so its tables are still
+empty. An empty cell is honest where an estimate would not be, and it stays empty
+until the hardware exists to fill it.
+
+Two figures in Test 1 carry caveats rather than confidence, both marked inline:
+every `cpu`-load row throttled, and `A / idle / whole` has not been re-verified.
 
 ---
 
@@ -484,16 +492,19 @@ Tests 2 and 3 measure different things badly: `rtl_test` streams to nowhere, and
 a decoded image is a subjective read. The gap between them is a capture that is
 *real* and *measured*.
 
-`gr-kosmos/` holds the scaffold for an inline GNU Radio block that watches the
-sample stream and logs every discontinuity with a timestamp — the gauge in the
-pipe. Once it works, every real capture becomes a benchmark run, and Test 2 stops
-being synthetic.
+`gr-kosmos/` holds an inline GNU Radio block that watches the sample stream and
+logs every discontinuity with a timestamp — the gauge in the pipe. Once it runs
+on hardware, every real capture becomes a benchmark run, and Test 2 stops being
+synthetic.
 
 No published RT-versus-stock comparison in the SDR space has in-flowgraph
 instrumentation. That is part of what would make this result worth reading.
 
-Status: scaffold and Python skeleton only, no DSP logic. See
-`gr-kosmos/README.md`.
+Status: **implemented 2026-08-05, half of it verified.** The clock arithmetic
+that does the measuring is split into `gap_math.py`, needs nothing but the
+standard library, and passes 15 unit tests on any machine. The GNU Radio shell
+around it — tag unpacking, pass-through, log write — has still never run under
+GNU Radio, and will not until the Pi builds the stack. See `gr-kosmos/README.md`.
 
 ---
 
