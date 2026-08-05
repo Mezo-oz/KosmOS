@@ -1,0 +1,44 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# ============================================================================
+# KosmOS — schedule the TLE refresh
+# ============================================================================
+# Install with automation/install-tle-timer.sh. This is the unit you enable;
+# it activates kosmos-tle-update@%i.service on the same instance name.
+#
+#   sudo systemctl enable --now kosmos-tle-update@homelab.timer
+#   systemctl list-timers kosmos-tle-update@homelab.timer
+#
+# TWICE A DAY, AND NO MORE:
+#   CelesTrak publishes daily and asks not to be polled hard. Twice a day is
+#   already generous for data that changes once, and it exists only so a box
+#   that missed the morning run is not a full day stale by evening.
+#
+# WHY 05:17 AND 17:17 RATHER THAN THE HOUR:
+#   Every naive scheduler on the internet fires at :00. RandomizedDelaySec
+#   spreads it further — the whole point is to not be part of a thundering herd
+#   at a volunteer-funded service, and a fixed minute across every install of
+#   this repo would be exactly that.
+#
+# Persistent=true is the one that matters for a ground station. A box that was
+# powered off through both windows runs the update once when it comes back
+# instead of waiting for the next window with elements that are now days old —
+# and "it was off overnight" is the normal case for hardware in a garage, not
+# an edge case.
+#
+# This replaces the cron line in tle-updater.sh's header. That line still works
+# and is kept there for anyone without systemd, but a timer reports failure
+# through `systemctl status` where cron reports it into a log file.
+# ============================================================================
+
+[Unit]
+Description=KosmOS: twice-daily TLE refresh for %i
+Documentation=https://github.com/Mezo-oz/KosmOS
+
+[Timer]
+Unit=kosmos-tle-update@%i.service
+OnCalendar=*-*-* 05,17:17:00
+RandomizedDelaySec=900
+Persistent=true
+
+[Install]
+WantedBy=timers.target

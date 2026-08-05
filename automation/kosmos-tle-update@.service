@@ -1,0 +1,65 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# ============================================================================
+# KosmOS — refresh orbital elements from CelesTrak
+# ============================================================================
+# Install with automation/install-tle-timer.sh. Paired with
+# kosmos-tle-update@.timer, which is what schedules it; this unit on its own
+# only defines how one update runs.
+#
+# WHY THIS EXISTS:
+#   TLEs decay. A week-old element set points an antenna at empty sky, and
+#   nothing about a stale set announces itself — predict answers with the same
+#   confidence either way. An unattended ground station therefore needs the
+#   elements wound like a clock, and this is the winding.
+#
+# WHY IT IS A TEMPLATE UNIT (@):
+#   tle-updater.sh writes to ~/.predict/predict.tle and
+#   ~/.config/satellite-tle/, so it must run as the human who will read those
+#   files, not as root — root's ~/.predict is a directory nobody ever opens.
+#   The instance name is that username: kosmos-tle-update@homelab.timer runs it
+#   as homelab. A template gets this from systemd's own %i expansion, so the
+#   repo ships a complete valid unit instead of a file the installer has to
+#   rewrite with sed before it parses.
+#
+#   $HOME follows from User= — systemd sets HOME, USER, LOGNAME and SHELL from
+#   the account database whenever User= is set, so the script's $HOME resolves
+#   to that user's real home wherever it lives. Nothing here hardcodes /home.
+#
+# EXIT STATUS IS LOAD-BEARING:
+#   tle-updater.sh exits non-zero if any source failed to fetch or failed
+#   checksum validation, and it installs nothing it could not validate. So a
+#   failed run leaves the previous good elements in place AND shows up as a
+#   failed unit — `systemctl status` is a truthful answer to "are my elements
+#   current". That is the whole reason it is a unit rather than a cron line
+#   whose stderr goes to a log nobody reads.
+#
+# TimeoutStartSec bounds the run. The script already bounds its own retries
+# (MAX_TRIES) and each transfer (--max-time 30), but a TCP connection that
+# neither completes nor resets is outside what either can catch, and engineering
+# standard 4 says every wait has a ceiling.
+# ============================================================================
+
+[Unit]
+Description=KosmOS: update TLE orbital elements for %i
+Documentation=https://github.com/Mezo-oz/KosmOS
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=%i
+ExecStart=/usr/local/bin/kosmos-tle-update
+TimeoutStartSec=600
+
+# The script fetches over the network and writes into one user's home. It needs
+# no privilege beyond that, so it is given no more. ProtectSystem=full rather
+# than strict on purpose: strict would need the home directory listed in
+# ReadWritePaths, and the path is not knowable here without assuming /home/%i.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
