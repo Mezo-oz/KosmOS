@@ -821,6 +821,14 @@ appliance. Phases 1–2 build the parts; Phase 3 makes them run themselves.*
   - Produces a flashable `.img.gz` file
   - Anyone can download and flash to SD card
   - Like building a Docker image but for the whole OS
+  - ⚠️ *Promoted from "distribution convenience" to load-bearing prerequisite
+    (2026-08-20): 4d (A/B updates) cannot be built on top of an in-place
+    imperative install. The three sub-bullets above describe exactly that — a
+    script that assembles a system by running steps against a live box. You
+    cannot A/B such a system: there is no artifact to write into the other
+    slot. The builder has to emit a root filesystem **image** as its product,
+    not a configured machine. It is now the gate for the whole update story,
+    not just for "here's a file you can flash."*
 - [x] **Version pinning** — *pulled forward; see Pillar 3. `02c-sdr-userspace.sh`
   and `03-satcom-stack.sh` both pin every source they build.*
 - [x] **Checksum verification** — every git source is verified against its pinned
@@ -869,6 +877,116 @@ appliance. Phases 1–2 build the parts; Phase 3 makes them run themselves.*
   that matter more than antenna choice — polarisation and siting — and with the
   point that receive-only setups need no SWR matching, which is where money
   otherwise goes.
+
+#### 4d. Atomic A/B Updates & Rollback
+
+*Adopted 2026-08-20. Target: v0.9, after the image builder (4a) exists and not
+before. This is the difference between "a distro you reflash" and an appliance
+you can update in the field with no network and no way to brick it.*
+
+**The shape, in one sentence.** Two complete root filesystems live on the card at
+all times; you run A, the update writes into B, you reboot into B, and if B is bad
+you are one reboot from A — because A was never touched.
+
+Rollback therefore needs **no internet**. It is not a restore from a backup; the
+old version is physically still sitting there. It is a light switch, not a
+rebuild. This is how ChromeOS, Android, your router, Tesla and Home Assistant OS
+all do it.
+
+**Framework: RAUC.** The two serious open-source options are RAUC and SWUpdate;
+both take a signed bundle and write it to the inactive slot. Mender is a third,
+but its value is a hosted fleet server — irrelevant for one box. RAUC is the pick.
+
+**Slot decision: Pi firmware `tryboot`, not U-Boot.** Most embedded A/B setups let
+U-Boot choose the slot. That is a dead end here: U-Boot has no PCIe support for
+the BCM2712, which breaks the moment KosmOS moves to an NVMe HAT. Since the Pi 4,
+the second-stage bootloader lives in on-board EEPROM and is driven by text files
+(`autoboot.txt`, `config.txt`, `cmdline.txt`); `tryboot` is a firmware flag that
+loads an alternate config **exactly once**. Boot with the flag, and if nothing
+confirms the boot, the next boot returns to the old slot on its own. RAUC ships no
+official Pi firmware backend — Rtone has published one, and Home Assistant OS is a
+readable working reference (tryboot with `slot-A` / `slot-B` directories on the
+boot partition).
+
+- [ ] **Partition layout — decide this first; it is the expensive thing to change**
+  | Partition | Contents |
+  |---|---|
+  | boot A / boot B | kernel, DTBs, overlays, per-slot `config.txt` |
+  | root A / root B | the OS image — replaced wholesale on every update |
+  | **data (persistent)** | everything that must survive an update |
+
+  Every A/B swap replaces the root wholesale. Anything left on root is silently
+  wiped on update — silently, which is the dangerous part. KosmOS state that must
+  live on the data partition, named explicitly because each one already exists
+  somewhere in this roadmap:
+  - TLE elements (`~/.predict/predict.tle`) and the updater's cache — note that
+    `kosmos-tle-update@.service` is a template keyed on the username (`User=%i`)
+    and systemd derives `$HOME` from the account database, so the script writes
+    under `$HOME`. `$HOME` itself is therefore part of this boundary, not an
+    afterthought (Phase 1b)
+  - First-boot wizard output: hostname, callsign, lat/lon, WiFi, SSH keys (4b) —
+    this is precisely the state whose loss turns an appliance back into a kit
+  - Captures, decoded output, `benchmarks/` results
+  - Tuned profiles: `.gnuradio/`, SatDump, SDR++ (4b)
+  - Any generated cache that is expensive to rebuild. Nothing in the tree
+    produces one today, but this is the category that gets forgotten precisely
+    because it regenerates "for free" — and on ARM an FFT wisdom plan or similar
+    is a 30–60 s first-run stall, so losing it every update would be a
+    self-inflicted bug. Add entries here as the Phase 2 decoders land.
+
+- [ ] **Health check as the rollback trigger.** After booting the new slot, a
+  systemd service runs checks and only then calls `rauc status mark-good`. Never
+  marks good → next boot reverts. `02a-verify-kernel.sh` is the seed for this;
+  expand it into the gate: kernel string carries `-kosmos` · RT patchset actually
+  active (reuse the fixed three-step detection — `/proc/config.gz` → `uname -v` →
+  legacy file; the naive `/sys/kernel/realtime` check FAILs on a genuine
+  mainlined-RT kernel) · SDR enumerates on USB · `gr-kosmos` imports · TLE timer
+  loaded and not failed.
+
+- [ ] **Bundle build + offline install.** Build the `.raucb` on the VM, sign it,
+  put it on a USB stick, `rauc install /media/usb/kosmos-1.4.raucb`. No network in
+  either direction: not to update, not to roll back. This is the field story.
+
+- [ ] **Hardware watchdog** — BCM2712 watchdog enabled and armed via systemd
+  `RuntimeWatchdogSec`, so a hang forces a reset instead of a silent brick.
+
+- [ ] **Keep the EEPROM bootloader out of the update path entirely.** Bricking
+  there is the one failure mode that requires a physical card pull, and no
+  software rollback can reach it.
+
+**What this protects against, and what it does not — state it in the docs, don't
+discover it in the field.** The Pi firmware backend cannot implement a
+boot-attempts counter (it is effectively one attempt), and the firmware **cannot
+fall back to the other slot if the primary slot becomes unbootable**.
+
+| Failure | Covered? |
+|---|---|
+| New slot boots, but KosmOS is broken (bad build, missing driver, dead service) | ✅ health check fails → automatic revert |
+| New slot never reaches Linux (bad kernel, corrupt initramfs, wrong DTB) | ❌ tryboot has no fallback; U-Boot's bootcount would catch this, tryboot won't |
+
+Mitigations are the watchdog and the EEPROM rule above — not a fix, a reduction.
+"Unbrickable" is not a claim this project gets to make; "one reboot from the last
+known-good userspace" is, and that is worth saying precisely.
+
+**Operational gotcha:** on Pi 5 tryboot, plain `reboot` does **not** switch slots.
+Use `systemctl reboot`, or `reboot '0 tryboot'` explicitly. Any script or health
+check that reboots must use the right one or the A/B mechanism silently no-ops.
+
+**Storage cost:** two roots plus a data partition. Size the image accordingly and
+state the minimum card size in the release notes — this is also an argument for
+the NVMe HAT path, which is why the U-Boot PCIe limitation above is disqualifying
+rather than academic.
+
+⚠️ **Four upstream claims above are carried in from the drafting session and have
+not been re-verified against current upstream docs (status as of 2026-08-20):**
+that RAUC ships no official Pi firmware backend and Rtone's is the one available;
+that `tryboot` is effectively one attempt, with no boot-attempts counter and no
+firmware-level fallback; that U-Boot lacks BCM2712 PCIe support; and that
+`/dev/vcio` exists only in the Pi kernel tree. The RAUC backend situation in
+particular is the kind of thing that moves between releases. Re-check each before
+it is treated as settled — the same rule the ⚠️ rows in `config/frequencies.md`
+follow. **Explicitly not decided here:** pi-gen vs debootstrap for the artifact
+build. That choice belongs to 4a, to be made when the image builder is written.
 
 ---
 
@@ -940,7 +1058,11 @@ v0.5   ......    Protocol decoders (Iridium, AIS, APRS/direwolf)
 v0.6   ......    Field deployment kit (WiFi AP, WireGuard, web dashboard,
                  optional Tor bridge module)
 v0.7   ......    Monitoring stack (logging, Grafana, RF baseline)
-v0.8   ......    Image builder (reproducible, distributable .img.gz)
+v0.8   ......    Image builder (reproducible, distributable .img.gz) —
+                 artifact-based build, A/B-ready partition layout laid down
+                 from the very first image
+v0.9   ......    Atomic A/B updates (RAUC + tryboot), health-check gate,
+                 offline USB bundle install, automatic rollback
 v1.0   ......    Full release — documented, tested, flashable image
 ```
 
@@ -1008,7 +1130,13 @@ KosmOS/
 │   ├── ✅ antennas.md           # Antenna selection guide
 │   └── ·  profiles/             # Satellite profiles + SDR++ / SatDump configs
 ├── image/
-│   └── ·  build-image.sh        # Automated .img.gz builder
+│   ├── ·  build-image.sh        # Automated .img.gz builder
+│   ├── ·  build-bundle.sh       # .raucb bundle from a built image
+│   ├── ·  rauc/
+│   │   ├── ·  system.conf       # Slot definitions: boot/root A+B, data
+│   │   └── ·  kosmos.cert.pem   # Signing cert; private key NEVER committed
+│   └── ·  health-check/         # Gate that calls rauc status mark-good
+│       └── ·  kosmos-mark-good.sh
 └── ✅ .gitignore
 
 (NOT in this repo: gr-icesickle — lives with the IceSickle project; runs ON
@@ -1258,6 +1386,17 @@ of the repo on the Pi.
     linted**, pinned from line one. Still needs its first run on pi-server;
     nothing in it has been executed.
 12. First NOAA APT capture using SatDump
+13. **A/B pre-checks (no purchase, no reboot required)** — on pi-server:
+    a. `zcat /proc/config.gz | grep -i -e VCIO -e BCM2835_WDT` and `ls /dev/vcio`
+       — confirm the tryboot mechanism's kernel dependency is actually present on
+       the running KosmOS kernel. Both symbols are now pinned in
+       `kernel/sdr-rt.config`, but pinned on an **unverified** symbol name: if
+       this check comes back empty the pin is wrong and must be corrected before
+       the next build, not after.
+    b. `ls /sys/class/watchdog/` — confirm the watchdog driver binds on BCM2712,
+       not merely that the option is set.
+    Findings go in 4d. If (a) is missing, 4d's slot mechanism needs rethinking
+    before any RAUC config is written.
 
 **Carried forward from the audit, not yet scheduled:**
 - ~~shellcheck has never been run~~ ✅ **verified at zero.** 11 findings fixed:
