@@ -909,11 +909,41 @@ readable working reference (tryboot with `slot-A` / `slot-B` directories on the
 boot partition).
 
 - [ ] **Partition layout — decide this first; it is the expensive thing to change**
-  | Partition | Contents |
-  |---|---|
-  | boot A / boot B | kernel, DTBs, overlays, per-slot `config.txt` |
-  | root A / root B | the OS image — replaced wholesale on every update |
-  | **data (persistent)** | everything that must survive an update |
+
+  ✅ *Verified 2026-08-20 against the Pi firmware `autoboot.txt` documentation.
+  This supersedes the two-boot-partition sketch 4d was adopted with, which was
+  wrong in a way that would have cost a reflash to discover.*
+
+  | # | Type | Contents | Size |
+  |---|---|---|---|
+  | p1 | FAT16 primary | `autoboot.txt` **only** — the slot selector | 16 MB |
+  | p2 | FAT32 primary | bootfs A — kernel, DTBs, overlays, `cmdline.txt`, `config.txt` | 512 MB |
+  | p3 | FAT32 primary | bootfs B — same contents, other slot | 512 MB |
+  | p4 | extended | container for the logicals below | — |
+  | p5 | ext4 logical | root A — replaced wholesale on every update | 4 GB |
+  | p6 | ext4 logical | root B — same | 4 GB |
+  | p7 | ext4 logical | **data (persistent)** — everything that must survive an update | remainder |
+
+  **Three FAT partitions, not two, and the reason is structural.** The firmware
+  reads `autoboot.txt` from the first FAT partition and uses its `boot_partition`
+  directive to choose a slot; a `[tryboot]` section names the other one, and
+  `tryboot_a_b=1` makes the switch at partition level so neither slot needs its
+  own `tryboot.txt` / `tryboot.img` variants. That selector **cannot live inside
+  either slot** — an update rewriting bootfs A would be rewriting the file that
+  decides whether A boots at all. p1 exists so the selector sits outside both
+  slots. It is the same rule as "keep the EEPROM out of the update path", one
+  level up, and it is the file the Rtone backend rewrites to flip slots.
+
+  **Why an extended partition.** `boot_partition` can only name MBR primaries,
+  1–4, and three of those are spoken for by FAT. That leaves exactly one, so the
+  three ext4 filesystems live in an extended partition as logicals. The firmware
+  never names them — only `cmdline.txt` does — so nothing is given up.
+
+  **Minimum card size falls out of this table** and is computed, not typed:
+  `image/layout.sh summary` reports 9248 MiB consumed before the data partition
+  gets anything, 9760 MiB with a token 512 MiB of it. 16 GB is the floor, 32 GB
+  the number for the release notes. The script is authoritative; if this
+  paragraph and `layout.sh min-bytes` ever disagree, the script is right.
 
   Every A/B swap replaces the root wholesale. Anything left on root is silently
   wiped on update — silently, which is the dangerous part. KosmOS state that must
@@ -1130,6 +1160,7 @@ KosmOS/
 │   ├── ✅ antennas.md           # Antenna selection guide
 │   └── ·  profiles/             # Satellite profiles + SDR++ / SatDump configs
 ├── image/
+│   ├── ✅ layout.sh             # A/B layout: THE single source of truth
 │   ├── ·  build-image.sh        # Automated .img.gz builder
 │   ├── ·  build-bundle.sh       # .raucb bundle from a built image
 │   ├── ·  rauc/
