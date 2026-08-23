@@ -260,7 +260,8 @@ CONFIG=$(./bench-detect-config.sh)      # prints A, B or C; non-zero if unsure
 `kosmos-health-check.sh` **398**, `tle-updater.sh` **397**,
 `run-latency-bench.sh` **396**, `install-kernel.sh` 383, `rtl-power-heatmap.py`
 **377**, `run-sdr-bench.sh` 367, `layout.sh` 338, `01-build-kernel.sh` 329,
-`02c-sdr-userspace.sh` 298, `install-tle-timer.sh` 249, `slot-identity.sh` 157.
+`02c-sdr-userspace.sh` 298, `install-tle-timer.sh` 249, `fetch-base.sh` 172,
+`slot-identity.sh` 157.
 
 ### ✅ The rule fired again, 2026-08-23 — and this time it was resisted first
 
@@ -895,11 +896,94 @@ appliance. Phases 1–2 build the parts; Phase 3 makes them run themselves.*
 *Goal: Make KosmOS reproducible and distributable*
 
 #### 4a. Image Building
-- [ ] **Automated image builder script**
+
+**⏳ Started 2026-08-23.** The base-image question 4d deferred here is decided,
+and stage 1 is built and run on hardware.
+
+##### ✅ Decision: a pinned stock image. Not pi-gen, not debootstrap.
+
+4d left this as "pi-gen vs debootstrap, to be decided in 4a". The answer is
+**neither** — the base is the official Raspberry Pi OS Lite image, taken as a
+pinned binary and customised. Three things decided it, and the first is the one
+that actually settles it:
+
+1. **The official image *is* pi-gen output, and unlike a pi-gen run it can be
+   pinned.** Its `.info` file names the pi-gen commit that produced it
+   (`ca8aeed0…`, stage2) and the exact version of every package inside, and a
+   SHA-256 is published beside it. Running pi-gen ourselves produces a
+   *different* image on every run — apt moves underneath it — with no digest to
+   check against. So this route gets pi-gen's product *and* a pin, without
+   running pi-gen. Under Pillar 3 that is not a close call.
+2. **It carries the Pi OS defaults by construction, and those are load-bearing
+   now.** Verified inside the fetched image, not inferred from a package list:
+   `/usr/lib/systemd/system.conf.d/40-rpi-enable-watchdog.conf` is present with
+   `RuntimeWatchdogSec=1m`, and `/usr/bin/vcmailbox` is present. Those are 4d's
+   watchdog mitigation and 4d's tryboot flag-setter. **A debootstrap image
+   silently has neither** — which is exactly the finding recorded in 4d, now
+   confirmed from the other direction.
+3. **The build host is already capable.** pi-server is arm64 Debian **trixie**,
+   the same release as the image, so the chroot is native and needs no qemu —
+   and `losetup`, `sfdisk`, `parted`, `mkfs.vfat`, `mkfs.ext4` and `chroot` are
+   all installed already. Nothing to provision. (`debootstrap` is the one tool
+   absent, which is mildly funny and entirely irrelevant.)
+
+**This also answers the objection that promoted 4a in the first place** — "a
+script that assembles a system by running steps against a live box". A chroot
+into a loop-mounted image is not a live box; the artifact *is* the product. And
+it means the existing pinned `02*`/`03*` scripts can be reused inside the
+chroot rather than rewritten, which is the difference between 4a being a
+re-implementation and 4a being an assembly step.
+
+⚠️ **Known cost, stated up front rather than discovered:** those scripts assume
+a live box in places — `systemctl`, `modprobe`, reboot advice — and will need a
+chroot-safe path. And Pi OS Lite's own first-boot resize (`init=…/firstboot`)
+**must** be disabled or it grows the root to fill the card and eats slot B;
+`layout.sh`'s cmdline emitter already omits it for that reason.
+
+##### Builder stages
+
+Split by artifact, each independently runnable, sequencer on top — the shape
+`02-post-install.sh` already uses.
+
+| Stage | Script | Product | Status |
+|---|---|---|---|
+| 1 | `image/fetch-base.sh` | verified stock `.img` | ✅ built, run on pi-server |
+| 2 | `image/build-rootfs.sh` | KosmOS rootfs (chroot: kernel + userspace) | · |
+| 3 | `image/assemble-image.sh` | A/B `.img` per `layout.sh`, both slots + `slots.conf` | · |
+| 4 | `image/build-image.sh` | sequencer → `.img.gz` | · |
+
+- [x] **Stage 1 — fetch and verify the base.** `image/fetch-base.sh`, 172 lines.
+  Downloads, verifies, decompresses, prints the `.img` path on stdout; every
+  message goes to stderr so the path can be captured directly.
+
+  **The digest is pinned in the script, not fetched from the `.sha256` beside
+  the image.** A digest downloaded from the same host as the artifact proves
+  only that the two agree, which a server serving both can arrange. Pinning it
+  in the repo means changing the image requires a reviewed diff.
+
+  Run on pi-server: 500 MB in 2m25s, SHA-256 matched, decompressed to ~3 GB;
+  re-run is 6 s and re-downloads nothing. The image was then loop-mounted and
+  its contents checked directly — that is where the watchdog drop-in and
+  `vcmailbox` above were confirmed, and it proves the mount path stage 3 needs.
+  Disk is checked *before* the download, because running out during
+  decompression leaves a truncated file that looks like a bad download.
+
+- [ ] **Stage 2 — build the rootfs in a chroot.**
+- [ ] **Stage 3 — assemble the A/B image.** Consumes `layout.sh sfdisk`,
+  `autoboot`, `cmdline` and `slotmap`; writes the same rootfs into **both**
+  slots so a fresh card has a working fallback from first boot.
+- [ ] **Stage 4 — sequencer, compression, release artifact.**
+
+⚠️ **Disk on the build host is the tight constraint.** pi-server has ~18 GB
+free; the base costs ~3.5 GB and the assembled image ~9.5 GB. That fits, with
+little room for a second copy or an uncompressed intermediate. Stage 3 should
+write the image once rather than build-then-copy, and the figure gets re-checked
+before stage 3 runs rather than after it fails.
+
+- [ ] **Original bullets, kept for the record**
   - Takes a fresh Pi OS Lite image → applies kernel → installs all tools
   - Produces a flashable `.img.gz` file
   - Anyone can download and flash to SD card
-  - Like building a Docker image but for the whole OS
   - ⚠️ *Promoted from "distribution convenience" to load-bearing prerequisite
     (2026-08-20): 4d (A/B updates) cannot be built on top of an in-place
     imperative install. The three sub-bullets above describe exactly that — a
@@ -1116,10 +1200,22 @@ boot partition).
   of the split. The harness was removed afterwards and the box left as found.
 
   Still to build: `kosmos-mark-good.sh` (run the checker, call
-  `rauc status mark-good` only on exit 0) and its systemd unit. Both are small
-  and both depend on RAUC's actual CLI — so they wait for RAUC to be installed
-  rather than being written blind, and see claim 1 below: an official backend is
-  targeted at RAUC v1.17, which makes a hand-written one likely throwaway.
+  `rauc status mark-good` only on exit 0) and its systemd unit.
+
+  ⏸️ **Decided 2026-08-23: wait for `rauc/rauc#1599` rather than write a custom
+  backend.** The re-verification below found that PR open, unmerged, actively
+  maintained and milestoned for **RAUC v1.17**. Writing a Pi firmware backend
+  now means writing the thing upstream is finishing, then throwing it away —
+  and carrying it in the meantime, on a mechanism (`autoboot.txt` rewriting,
+  slot flipping) where a divergence between our version and the merged one is
+  not a merge conflict but a box that boots the wrong slot.
+
+  The cost of waiting is bounded and known: 4d is the *last* phase that needs
+  it, and 4a is a hard prerequisite that is not started. There is no scenario
+  where the backend is the thing blocking progress today. **Re-check #1599 at
+  the point 4a produces its first image**; if v1.17 has not landed by then,
+  reopen the build-or-wait question with an actual date to reason about instead
+  of a milestone label.
 
   ✅ **Slot identity check — built and tested on hardware, 2026-08-23.** It had
   been recorded here as needing RAUC. It does not: the firmware publishes both
@@ -1463,7 +1559,10 @@ KosmOS/
 │   └── ·  profiles/             # Satellite profiles + SDR++ / SatDump configs
 ├── image/
 │   ├── ✅ layout.sh             # A/B layout: THE single source of truth
-│   ├── ·  build-image.sh        # Automated .img.gz builder
+│   ├── ✅ fetch-base.sh         # Stage 1: pinned stock Pi OS Lite, verified
+│   ├── ·  build-rootfs.sh       # Stage 2: chroot install of kernel + userspace
+│   ├── ·  assemble-image.sh     # Stage 3: A/B image per layout.sh
+│   ├── ·  build-image.sh        # Stage 4: sequencer → .img.gz
 │   ├── ·  build-bundle.sh       # .raucb bundle from a built image
 │   ├── ·  rauc/
 │   │   ├── ·  system.conf       # Slot definitions: boot/root A+B, data
