@@ -259,9 +259,9 @@ CONFIG=$(./bench-detect-config.sh)      # prints A, B or C; non-zero if unsure
 **Current headroom** (re-measured 2026-08-23, after the slot check):
 `kosmos-health-check.sh` **398**, `tle-updater.sh` **397**,
 `run-latency-bench.sh` **396**, `install-kernel.sh` 383, `rtl-power-heatmap.py`
-**377**, `run-sdr-bench.sh` 367, `layout.sh` 338, `01-build-kernel.sh` 329,
-`02c-sdr-userspace.sh` 298, `install-tle-timer.sh` 249, `fetch-base.sh` 172,
-`slot-identity.sh` 157.
+**377**, `run-sdr-bench.sh` 367, `build-rootfs.sh` 352, `layout.sh` 338,
+`01-build-kernel.sh` 329, `02c-sdr-userspace.sh` 298, `install-tle-timer.sh`
+249, `fetch-base.sh` 172, `slot-identity.sh` 157.
 
 ### ✅ The rule fired again, 2026-08-23 — and this time it was resisted first
 
@@ -948,7 +948,7 @@ Split by artifact, each independently runnable, sequencer on top — the shape
 | Stage | Script | Product | Status |
 |---|---|---|---|
 | 1 | `image/fetch-base.sh` | verified stock `.img` | ✅ built, run on pi-server |
-| 2 | `image/build-rootfs.sh` | KosmOS rootfs (chroot: kernel + userspace) | · |
+| 2 | `image/build-rootfs.sh` | KosmOS rootfs (chroot: kernel + userspace) | ✅ built, run on pi-server |
 | 3 | `image/assemble-image.sh` | A/B `.img` per `layout.sh`, both slots + `slots.conf` | · |
 | 4 | `image/build-image.sh` | sequencer → `.img.gz` | · |
 
@@ -968,7 +968,74 @@ Split by artifact, each independently runnable, sequencer on top — the shape
   Disk is checked *before* the download, because running out during
   decompression leaves a truncated file that looks like a bad download.
 
-- [ ] **Stage 2 — build the rootfs in a chroot.**
+- [x] **Stage 2 — build the rootfs in a chroot.** `image/build-rootfs.sh`, 352
+  lines. Extracts both filesystems out of the pinned base, neutralises Pi OS
+  first-boot behaviour, and installs into a native arm64 chroot. Products:
+  `$CACHE/rootfs/`, `$CACHE/bootfs/`, `$CACHE/rootfs.manifest`.
+
+  **The kernel package splits across two stages**, which is not obvious and is
+  written into the script header so nobody "fixes" it: `modules/` belongs to the
+  rootfs and is installed here; `boot/` belongs to each slot's bootfs and is
+  placed by stage 3. `install-kernel.sh` does both at once because it targets a
+  live box, and it uses `os_prefix` to co-exist with the stock kernel on a
+  shared boot partition — **neither applies here.** In the A/B layout a slot's
+  bootfs holds only our kernel and the slot *is* the isolation, so `os_prefix`
+  is a redundant indirection in the image. Stage 2 deliberately does not call
+  `install-kernel.sh`.
+
+  **This is the most dangerous script in the repo** and the header says so: it
+  bind-mounts `/dev`, `/proc` and `/sys` into a directory it also deletes, and
+  `rm -rf` over a tree with `/dev` still bound walks out of the work directory
+  into the host. Three guards, enforced rather than remembered — every mount
+  goes through `mount_into()` which records it; teardown runs from an `EXIT`
+  trap so it fires on failure and Ctrl-C, not just success; and `safe_rmtree()`
+  is the only place `sudo rm -rf` appears, refusing any path that is not
+  absolute, not under the build cache, or still carrying mounts.
+
+  **Run on pi-server, twice, and the second run is the one that mattered.**
+  `--prep-only` took 2m15s; the full run 7m29s and genuinely installed
+  `rt-tests 2.6-1.1` and `stress-ng 0.19.02-1` *inside* the chroot, which is the
+  proof the chroot works at all. Fidelity was checked rather than assumed:
+  73 669 files and 16 setuid binaries on both sides, and the base has no file
+  capabilities so none were lost.
+
+  Three bugs found by running it, all in the same family as the rest of this
+  week — code that looks right until something proves otherwise:
+  - **`rm -rf` unprivileged against root-owned trees.** Worked on the first run
+    because nothing existed yet, failed on the second. It failed *loudly* rather
+    than half-deleting, which is the only reason it was cheap. Now `safe_rmtree`.
+  - **A manifest that lied.** The apt package list was hardcoded, so a
+    `--prep-only` run emitted a manifest claiming packages it had never
+    installed. A provenance file that lies is worse than none, because it is the
+    thing a later reader trusts *instead of* checking. Every line now records
+    what the run actually did.
+  - **A comment that lied.** It claimed the base's `resolv.conf` is a symlink
+    into systemd-resolved; it is a plain file. The save/restore is still right,
+    but for a better reason than the one written down: shipping the build host's
+    nameservers inside the image would put pi-server's DNS on every flashed
+    card. Verified after a full run that the restored file is byte-identical to
+    the pristine base and that the host's `1.1.1.1` did not survive.
+
+  ⚠️ **Two findings from the base image that 4b has to answer.**
+  1. **The stock image cannot boot headless into a usable state.** `pi` exists
+     as uid 1000 but is **locked — no password hash** — and `userconfig.service`
+     is enabled, so a first boot with no `/boot/firmware/userconf.txt` sits on
+     the console waiting for a user to be created. KosmOS must not paper over
+     this by baking in default credentials: an appliance shipping a known
+     username and password is a worse failure than one that asks. The safe
+     answer is the platform's own — the flasher supplies `userconf.txt`, which
+     Raspberry Pi Imager already writes — and it belongs in the stage 4 release
+     notes and the 4b wizard, not in the builder.
+  2. **The resize token is `resize`, not `init=…/firstboot`.** The note added to
+     4a on 2026-08-23 named the older mechanism. The stock `cmdline.txt` ends in
+     a bare `resize`; stage 2 strips it and stage 3 writes `cmdline.txt` fresh
+     from `layout.sh`, which never had it. Both, deliberately: the cost of one
+     being missed is a card that eats slot B on first boot.
+
+  Still not exercised: `--kernel` (no kernel package exists on pi-server — the
+  tarball did not survive, so this needs a rebuild) and `--with-satcom` (hours
+  of source builds). The rootfs as built today is base + bench tools, and the
+  script says so on exit rather than implying otherwise.
 - [ ] **Stage 3 — assemble the A/B image.** Consumes `layout.sh sfdisk`,
   `autoboot`, `cmdline` and `slotmap`; writes the same rootfs into **both**
   slots so a fresh card has a working fallback from first boot.
@@ -1560,7 +1627,7 @@ KosmOS/
 ├── image/
 │   ├── ✅ layout.sh             # A/B layout: THE single source of truth
 │   ├── ✅ fetch-base.sh         # Stage 1: pinned stock Pi OS Lite, verified
-│   ├── ·  build-rootfs.sh       # Stage 2: chroot install of kernel + userspace
+│   ├── ✅ build-rootfs.sh       # Stage 2: chroot install of kernel + userspace
 │   ├── ·  assemble-image.sh     # Stage 3: A/B image per layout.sh
 │   ├── ·  build-image.sh        # Stage 4: sequencer → .img.gz
 │   ├── ·  build-bundle.sh       # .raucb bundle from a built image
