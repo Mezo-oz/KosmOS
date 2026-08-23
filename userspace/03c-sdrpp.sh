@@ -114,7 +114,18 @@ echo ""
 echo "  Pinned at master ${SDRPP_SHA:0:12} (2026-07-05)"
 echo "  GUI application — builds headless, needs a display to run."
 echo ""
-read -r -p "Build and install SDR++? (y/N): " INSTALL_SDRPP
+# KOSMOS_ASSUME_YES exists for the image builder, which runs this in a chroot
+# with no tty. Without it `read` gets EOF, INSTALL_SDRPP stays empty, the case below
+# falls to its default and the script exits 3 -- which the sequencer treats as a
+# deliberate decline and reports as SKIPPED, so the build completes "successfully"
+# having installed nothing. Explicit opt-in, and no default: an unset variable
+# still prompts, so running this by hand is unchanged.
+if [ "${KOSMOS_ASSUME_YES:-0}" = "1" ]; then
+    INSTALL_SDRPP=y
+    echo "  KOSMOS_ASSUME_YES=1 — proceeding without prompting."
+else
+    read -r -p "Build and install SDR++? (y/N): " INSTALL_SDRPP
+fi
 case "${INSTALL_SDRPP,,}" in
     y|yes) ;;
     *)

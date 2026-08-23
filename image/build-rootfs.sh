@@ -262,15 +262,31 @@ install_apt_userspace() {
         die "apt-get install failed in chroot"
 }
 
+# The WHOLE userspace directory goes in, not just the two entry points.
+# 03-satcom-stack.sh is a sequencer that resolves 03a/03b/03c from its own
+# $SELF_DIR, so copying it alone puts it in a directory where its jobs do not
+# exist and it dies on the first one.
+#
+# KOSMOS_ASSUME_YES=1 is mandatory here, not a convenience. Each of these
+# scripts prompts, and in a chroot with no tty `read` gets EOF, the answer
+# defaults to no, and the script exits 3 -- which the sequencer treats as a
+# deliberate decline and reports as SKIPPED. Without the flag this function
+# would return success having installed nothing at all.
 install_satcom() {
     step "building the SATCOM stack from source (hours, not minutes)"
-    note "02c + 03a/03b/03c run inside the chroot"
+    local dst="$ROOTFS/tmp/kosmos-userspace"
+    sudo rm -rf "$dst"
+    sudo mkdir -p "$dst"
+    sudo cp "$REPO_ROOT"/userspace/*.sh "$dst/"
+    sudo chmod +x "$dst"/*.sh
+
     local s
-    for s in userspace/02c-sdr-userspace.sh userspace/03-satcom-stack.sh; do
-        sudo cp "$REPO_ROOT/$s" "$ROOTFS/tmp/$(basename "$s")"
-        in_chroot "bash /tmp/$(basename "$s")" || die "$s failed in chroot"
-        sudo rm -f "$ROOTFS/tmp/$(basename "$s")"
+    for s in 02c-sdr-userspace.sh 03-satcom-stack.sh; do
+        step "chroot: $s"
+        in_chroot "KOSMOS_ASSUME_YES=1 bash /tmp/kosmos-userspace/$s" ||
+            die "$s failed in chroot"
     done
+    sudo rm -rf "$dst"
 }
 
 # Every line records what this run ACTUALLY did. The first draft hardcoded the

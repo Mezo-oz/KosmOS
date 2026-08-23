@@ -165,7 +165,18 @@ if [ -z "$PIN_GNURADIO" ]; then
     echo "  pin set."
 fi
 echo ""
-read -r -p "Install GNU Radio, gr-osmosdr and SoapySDR? (y/N): " INSTALL_GR
+# KOSMOS_ASSUME_YES exists for the image builder, which runs this in a chroot
+# with no tty. Without it `read` gets EOF, INSTALL_GR stays empty, the case below
+# falls to its default and the script exits 3 -- which the sequencer treats as a
+# deliberate decline and reports as SKIPPED, so the build completes "successfully"
+# having installed nothing. Explicit opt-in, and no default: an unset variable
+# still prompts, so running this by hand is unchanged.
+if [ "${KOSMOS_ASSUME_YES:-0}" = "1" ]; then
+    INSTALL_GR=y
+    echo "  KOSMOS_ASSUME_YES=1 — proceeding without prompting."
+else
+    read -r -p "Install GNU Radio, gr-osmosdr and SoapySDR? (y/N): " INSTALL_GR
+fi
 case "${INSTALL_GR,,}" in
     y|yes) ;;
     *)

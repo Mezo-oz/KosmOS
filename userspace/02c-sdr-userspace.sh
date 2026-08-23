@@ -166,7 +166,18 @@ echo "============================================"
 echo "  SDR Userspace Tool Installation"
 echo "============================================"
 echo ""
-read -r -p "Install SDR userspace tools now? (y/N): " INSTALL_TOOLS
+# KOSMOS_ASSUME_YES exists for the image builder, which runs this in a chroot
+# with no tty. Without it `read` gets EOF, INSTALL_TOOLS stays empty, the case below
+# falls to its default and the script exits 3 -- which the sequencer treats as a
+# deliberate decline and reports as SKIPPED, so the build completes "successfully"
+# having installed nothing. Explicit opt-in, and no default: an unset variable
+# still prompts, so running this by hand is unchanged.
+if [ "${KOSMOS_ASSUME_YES:-0}" = "1" ]; then
+    INSTALL_TOOLS=y
+    echo "  KOSMOS_ASSUME_YES=1 — proceeding without prompting."
+else
+    read -r -p "Install SDR userspace tools now? (y/N): " INSTALL_TOOLS
+fi
 if [ "$INSTALL_TOOLS" != "y" ]; then
     echo "Skipping userspace install. Run this script again when ready."
     exit 3

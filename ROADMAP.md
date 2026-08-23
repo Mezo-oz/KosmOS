@@ -1039,7 +1039,36 @@ Split by artifact, each independently runnable, sequencer on top — the shape
   `depmod` inside the chroot, and the manifest records the version. So the
   rootfs is now a real KosmOS rootfs, not base plus bench tools.
 
-  Still not exercised: `--with-satcom`, which is hours of source builds.
+  ⏳ **`--with-satcom` — two blockers found before the first run, 2026-08-23.**
+  Both would have wasted hours, and the second would have produced a *wrong
+  answer* rather than a failure.
+
+  1. **The sequencer resolves its jobs from `$SELF_DIR`.** `install_satcom()`
+     copied only `03-satcom-stack.sh` into the chroot, landing it in a directory
+     where `03a`/`03b`/`03c` do not exist. It would have died on the first job.
+     The whole `userspace/` directory now goes in.
+  2. **Every one of those scripts prompts** — `read -r -p "… (y/N): "` in
+     `02c`, `03a`, `03b` and `03c`. In a chroot with no tty `read` gets EOF, the
+     variable stays empty, the case falls through to its default and the script
+     **exits 3** — which `run_job` treats as a *deliberate decline* and records
+     as SKIPPED. The sequencer would then exit 0, `install_satcom()` would
+     report success, and the manifest would record `satcom_stack built from
+     source` for a chroot in which **nothing had been installed**. Since the
+     entire purpose of this run is to measure the root size, that is not a
+     failed build — it is a confidently wrong number.
+
+  Fixed with `KOSMOS_ASSUME_YES`, an **explicit opt-in with no default**: unset
+  still prompts, so running any of these by hand is unchanged, and the builder
+  sets it deliberately. This is the same shape as the `pipefail`/`grep -q` bug
+  and the namespace-package import — a check whose failure mode is silent
+  success. It is also, independently, what a manifest-driven builder needs:
+  scripts must be drivable non-interactively from declared environment.
+
+  Also confirmed chroot-safe before launching: no `systemctl` or `reboot` in the
+  SATCOM path, and `sudo` works inside the chroot (with a harmless
+  `unable to resolve host` warning, since the chroot has no entry for the build
+  host's name — cosmetic, and deliberately not "fixed" by writing pi-server's
+  hostname into an image that ships to other people).
 - [x] **Stage 3 — assemble the A/B image.** `image/assemble-image.sh`, 286
   lines. **The first KosmOS image exists**, built on pi-server in 7m54s:
   9760 MiB apparent, 4.7 GB on disk because it stays sparse.
