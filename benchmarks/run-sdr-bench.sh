@@ -137,8 +137,12 @@ fi
 detect_config() {
     local rt=0 nohz=0
 
-    if [ -f /proc/config.gz ] && zcat /proc/config.gz 2>/dev/null \
-        | grep -qx "CONFIG_PREEMPT_RT=y"; then
+    # Process substitution, not a pipe into grep -q: under pipefail, zcat dies
+    # of SIGPIPE when grep -q exits early and the pipeline reports failure even
+    # though it matched, so this branch never ran. See detect-config.sh for the
+    # full note; fixed 2026-08-23.
+    if [ -f /proc/config.gz ] &&
+        grep -qx "CONFIG_PREEMPT_RT=y" <(zcat /proc/config.gz 2>/dev/null); then
         rt=1
     elif uname -v | grep -q "PREEMPT_RT"; then
         rt=1

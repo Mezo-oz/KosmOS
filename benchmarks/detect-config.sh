@@ -25,8 +25,17 @@ nohz=0
 # /sys/kernel/realtime is the legacy out-of-tree patchset marker and does not
 # exist on mainline RT since 6.12 — checking only for it reports NOT DETECTED on
 # exactly the kernel this project builds.
-if [ -f /proc/config.gz ] && zcat /proc/config.gz 2>/dev/null \
-    | grep -qx "CONFIG_PREEMPT_RT=y"; then
+#
+# Process substitution rather than `zcat ... | grep -qx`: with pipefail set,
+# grep -q exits on the first match while zcat is still writing (~242 KB through
+# a 64 KB pipe buffer), zcat takes SIGPIPE, and the pipeline reports failure
+# despite the match. This branch could therefore never be taken. Found and
+# measured 2026-08-23. No published result is affected — the uname -v fallback
+# agrees on both kernels this script has ever run on, and detect-config.sh was
+# re-run on pi-server after the fix and still prints C — but "strongest evidence
+# first" was not true until now.
+if [ -f /proc/config.gz ] &&
+    grep -qx "CONFIG_PREEMPT_RT=y" <(zcat /proc/config.gz 2>/dev/null); then
     rt=1
 elif uname -v | grep -q "PREEMPT_RT"; then
     rt=1

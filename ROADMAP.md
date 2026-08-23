@@ -143,6 +143,51 @@ shell/Python:
    deliberate and named LIKE_THIS (rule 6)
 7. **Pin every version, checksum every download** — Pillar 3's mechanics
 
+### ⚠️ Standard 3 has a sharp edge: never pipe into `grep -q` (found 2026-08-23)
+
+`set -o pipefail` is required by standard 3 above, and in combination with
+`grep -q` it silently inverts a check's result. `grep -q` exits the instant it
+matches; if the producer is still writing, it dies of `SIGPIPE`, and `pipefail`
+reports the **whole pipeline as failed even though the match succeeded**.
+
+Found while building the 4d health check, then measured on pi-server. Three
+scripts had it, all on the same line of code:
+
+```bash
+zcat /proc/config.gz | grep -qx "CONFIG_PREEMPT_RT=y"   # always "fails"
+```
+
+`/proc/config.gz` decompresses to 242 KB through a 64 KB pipe buffer, so `zcat`
+is guaranteed to still be writing — the bug is **deterministic, not a race**.
+Affected: `benchmarks/detect-config.sh`, `benchmarks/run-sdr-bench.sh`,
+`userspace/02a-verify-kernel.sh`. All three used it as the *first* of three
+RT-detection sources, so all three had been silently answering from the weaker
+`uname -v` fallback since the day they were written, while their comments
+claimed to consult the authoritative one.
+
+**No published result is wrong**, and that was checked rather than assumed: the
+fallback agrees on both kernels these scripts have ever run on, and
+`detect-config.sh` still prints `C` on pi-server after the fix. What was wrong
+was the guarantee — a kernel whose banner lacked the string would have been
+reported NOT DETECTED with `/proc/config.gz` sitting there saying otherwise.
+
+**Fix:** process substitution, which is one command with one exit status and no
+pipeline to mis-report.
+
+```bash
+grep -qx "CONFIG_PREEMPT_RT=y" <(zcat /proc/config.gz 2>/dev/null)
+```
+
+**The rule:** under `pipefail`, do not put `grep -q` — or `head`, or anything
+else that exits early — on the right of a pipe whose producer emits more than a
+pipe buffer. shellcheck does not catch this at any level, including `-S style`;
+all three sites were clean before and after.
+
+Not every `| grep -q` in the tree is affected, and they were checked
+individually rather than swept: `echo "$x" | grep -q` and `uname -v | grep -q`
+are safe, because the output fits in the pipe buffer and the producer finishes
+before `grep` can exit.
+
 ### Extraction rule (decided 2026-07-30)
 
 Several scripts duplicate helper code on purpose. **Do not extract it on sight.**
@@ -213,13 +258,20 @@ CONFIG=$(./bench-detect-config.sh)      # prints A, B or C; non-zero if unsure
 
 **Current headroom** (re-measured 2026-08-23): `tle-updater.sh` **397**,
 `run-latency-bench.sh` **396**, `install-kernel.sh` 383, `rtl-power-heatmap.py`
-**377**, `run-sdr-bench.sh` 363, `01-build-kernel.sh` 329, `layout.sh` 310,
-`02c-sdr-userspace.sh` 298, `install-tle-timer.sh` 249.
+**377**, `kosmos-health-check.sh` **372**, `run-sdr-bench.sh` 367,
+`01-build-kernel.sh` 329, `layout.sh` 310, `02c-sdr-userspace.sh` 298,
+`install-tle-timer.sh` 249.
 
 `01-build-kernel.sh` moved 319 → 329 taking the Phase 4d config gate; `layout.sh`
-enters the table at 310, new since the 2026-08-05 measurement. The top four are
-unchanged and still the ones to watch — three of them within four lines of the
-cap.
+enters at 310, new since the 2026-08-05 measurement; `kosmos-health-check.sh`
+enters at 372, fifth from the top on its first commit. The top four are unchanged
+and still the ones to watch — three of them within four lines of the cap.
+
+⚠️ **The new entry is the one to watch next.** 4d's health check still has a
+mark-good wrapper and a systemd unit to gain, and the natural instinct will be
+to put them in this file. They go in their own files beside it; at 372 lines
+there is no room to grow the checker, and the extraction rule's trigger is a
+file that exceeds 400 and cannot lose them elsewhere.
 
 **The cap now gates Python too.** Standard 1 says "≤400 lines per file" and this
 document has named Python a first-class language since the standards were
@@ -969,14 +1021,81 @@ boot partition).
     is a 30–60 s first-run stall, so losing it every update would be a
     self-inflicted bug. Add entries here as the Phase 2 decoders land.
 
-- [ ] **Health check as the rollback trigger.** After booting the new slot, a
+- ⏳ **Health check as the rollback trigger.** After booting the new slot, a
   systemd service runs checks and only then calls `rauc status mark-good`. Never
-  marks good → next boot reverts. `02a-verify-kernel.sh` is the seed for this;
-  expand it into the gate: kernel string carries `-kosmos` · RT patchset actually
-  active (reuse the fixed three-step detection — `/proc/config.gz` → `uname -v` →
-  legacy file; the naive `/sys/kernel/realtime` check FAILs on a genuine
-  mainlined-RT kernel) · SDR enumerates on USB · `gr-kosmos` imports · TLE timer
-  loaded and not failed.
+  marks good → next boot reverts.
+
+  ✅ **The checker exists and has been run on hardware, 2026-08-23** —
+  `image/health-check/kosmos-health-check.sh`, 372 lines. Its **exit code is the
+  verdict**: 0 healthy, non-zero do-not-mark-good. That is what separates it in
+  kind from its seed `02a-verify-kernel.sh`, which always exits 0 on purpose;
+  every check had to be re-judged as a decision that reboots a machine rather
+  than a fact to print. Read-only, no sudo, no prompts, no network, no writes —
+  it has to run unattended as root early in boot and by hand as an ordinary user,
+  which is why 02a's `sudo modprobe ax25` did not come across.
+
+  It deliberately does **not** call `rauc`. Keeping judgement separate from
+  action is what let it be tested at all before 4a exists, and lets a human ask
+  "is this box healthy?" without side effects.
+
+  **CRITICAL vs ADVISORY is the design decision the script turns on, and it is
+  not the split the bullet above implied.** Only CRITICAL affects the exit code.
+  The line is *who broke it*: the image (revert fixes it) versus the operator —
+  removable hardware, site config, the network (revert cannot fix it, because the
+  old slot fails identically). Erring toward CRITICAL builds a box that reverts
+  every update because a dongle is unplugged, then reverts again, burning the one
+  recovery mechanism the design has on a fact the rollback cannot change.
+
+  So two of the checks named above split rather than transfer:
+  - *SDR enumerates on USB* → `rtl_test` **installed** is CRITICAL; a **device
+    answering** is ADVISORY. Test 2 has been hardware-blocked for weeks: that is
+    a healthy box with no dongle in it, and it must not revert.
+  - *TLE timer loaded and not failed* → the **unit files shipping** is CRITICAL;
+    an instance being enabled, or its last run having failed, is ADVISORY. 4d's
+    field story is explicitly a box with **no network**, so a failed TLE refresh
+    is the expected steady state out there, not a symptom.
+
+  Checks now: kernel carries `-kosmos` · PREEMPT_RT active (three-step) ·
+  watchdog bound · watchdog armed · GNU Radio imports · `gr-kosmos` imports ·
+  SATCOM binaries present — all CRITICAL; SDR device answering · TLE timer
+  instance state — ADVISORY.
+
+  **Two checks the ROADMAP asked for were wrong as specified, and hardware said
+  so.** Both were false *passes*, which is the direction that marks a broken slot
+  good:
+
+  1. **`gr-kosmos` imports.** `python3 -c "import kosmos"` proves nothing.
+     Python invents an implicit namespace package from any directory named
+     `kosmos/` on `sys.path` — and the current working directory is on that path.
+     Demonstrated on pi-server, where the import **succeeded** with
+     `__file__ = None`, off an unrelated `~/kosmos` directory, on a box with no
+     gr-kosmos installed. Fixed by importing a **submodule** (a namespace package
+     has no code to import from) under **`python3 -P`**, so the answer cannot
+     depend on where the service was started. Both were verified side by side:
+     from that same directory the naive form passes and the real check fails.
+  2. **One check, two subjects.** `kosmos/__init__.py` re-exports the probe,
+     which imports numpy, pmt and `gnuradio.gr` — so *any* import from the
+     package drags in the whole GNU Radio stack, and a single check would report
+     "gr-kosmos is broken" when GNU Radio is what is missing, sending whoever
+     reads the journal to the wrong place. Now asked separately. The dependency
+     itself is correct and stays: an OOT module without its framework is not
+     installed in any sense worth passing.
+
+  **Run on pi-server, both paths:** as it stands the box reports UNHEALTHY, exit
+  1 — kernel, RT, watchdog bound and armed all pass; GNU Radio, gr-kosmos, SATCOM
+  binaries and TLE units fail, which is correct, since pi-server has the kernel
+  but no SATCOM userspace. Against a throwaway harness supplying the missing
+  pieces it reports **HEALTHY, exit 0, with two advisory warnings outstanding** —
+  no dongle and no TLE instance. That second run is the one that matters: it
+  proves the advisory tier does not trigger a rollback, which is the whole point
+  of the split. The harness was removed afterwards and the box left as found.
+
+  Still to build: `kosmos-mark-good.sh` (run the checker, call
+  `rauc status mark-good` only on exit 0) and its systemd unit. Both are small
+  and both depend on RAUC's actual CLI, which is among the unverified upstream
+  claims below — so they wait for RAUC to be installed rather than being written
+  blind. A slot-identity check (are we running the slot we think we are?) needs
+  RAUC too and is not in the script yet.
 
 - [ ] **Bundle build + offline install.** Build the `.raucb` on the VM, sign it,
   put it on a USB stick, `rauc install /media/usb/kosmos-1.4.raucb`. No network in
@@ -1206,8 +1325,10 @@ KosmOS/
 │   ├── ·  rauc/
 │   │   ├── ·  system.conf       # Slot definitions: boot/root A+B, data
 │   │   └── ·  kosmos.cert.pem   # Signing cert; private key NEVER committed
-│   └── ·  health-check/         # Gate that calls rauc status mark-good
-│       └── ·  kosmos-mark-good.sh
+│   └── health-check/            # Gate that calls rauc status mark-good
+│       ├── ✅ kosmos-health-check.sh # The verdict: exit 0 = safe to mark good
+│       ├── ·  kosmos-mark-good.sh    # Wrapper: runs the above, then rauc
+│       └── ·  kosmos-mark-good.service
 └── ✅ .gitignore
 
 (NOT in this repo: gr-icesickle — lives with the IceSickle project; runs ON

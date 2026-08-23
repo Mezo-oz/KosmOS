@@ -68,7 +68,16 @@ fi
 #   3. /sys/kernel/realtime — legacy patchset only; kept for older kernels
 echo -n "RT scheduling:        "
 RT_EVIDENCE=""
-if [ -f /proc/config.gz ] && zcat /proc/config.gz 2>/dev/null | grep -qx "CONFIG_PREEMPT_RT=y"; then
+# Process substitution, not `zcat | grep -qx`. Under the `set -o pipefail` at
+# the top of this script, grep -q exits on its first match while zcat still has
+# ~242 KB to write, zcat dies of SIGPIPE, and the pipeline reports failure even
+# though the match succeeded -- so source 1 was unreachable and this check has
+# been silently answering from source 2 since it was written. Measured on
+# pi-server 2026-08-23. It never produced a wrong answer there, because the
+# uname -v banner agrees, but a kernel built without IKCONFIG_PROC in its banner
+# would have been reported NOT DETECTED while /proc/config.gz said otherwise.
+if [ -f /proc/config.gz ] &&
+    grep -qx "CONFIG_PREEMPT_RT=y" <(zcat /proc/config.gz 2>/dev/null); then
     RT_EVIDENCE="CONFIG_PREEMPT_RT=y in /proc/config.gz"
 elif uname -v | grep -q "PREEMPT_RT"; then
     RT_EVIDENCE="PREEMPT_RT in uname -v"
