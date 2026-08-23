@@ -955,8 +955,11 @@ both take a signed bundle and write it to the inactive slot. Mender is a third,
 but its value is a hosted fleet server — irrelevant for one box. RAUC is the pick.
 
 **Slot decision: Pi firmware `tryboot`, not U-Boot.** Most embedded A/B setups let
-U-Boot choose the slot. That is a dead end here: U-Boot has no PCIe support for
-the BCM2712, which breaks the moment KosmOS moves to an NVMe HAT. Since the Pi 4,
+U-Boot choose the slot. ~~That is a dead end here: U-Boot has no PCIe support for
+the BCM2712, which breaks the moment KosmOS moves to an NVMe HAT.~~ ⚠️ **That
+reason expired — see the re-verification below. The decision stands, the
+justification does not.** U-Boot v2026.07 enables BCM2712 PCIe; what it still
+cannot do is boot from NVMe. Since the Pi 4,
 the second-stage bootloader lives in on-board EEPROM and is driven by text files
 (`autoboot.txt`, `config.txt`, `cmdline.txt`); `tryboot` is a firmware flag that
 loads an alternate config **exactly once**. Boot with the flag, and if nothing
@@ -1092,10 +1095,16 @@ boot partition).
 
   Still to build: `kosmos-mark-good.sh` (run the checker, call
   `rauc status mark-good` only on exit 0) and its systemd unit. Both are small
-  and both depend on RAUC's actual CLI, which is among the unverified upstream
-  claims below — so they wait for RAUC to be installed rather than being written
-  blind. A slot-identity check (are we running the slot we think we are?) needs
-  RAUC too and is not in the script yet.
+  and both depend on RAUC's actual CLI — so they wait for RAUC to be installed
+  rather than being written blind, and see claim 1 below: an official backend is
+  targeted at RAUC v1.17, which makes a hand-written one likely throwaway.
+
+  ⚠️ **Correction, 2026-08-23:** a slot-identity check — *are we running the slot
+  we think we are?* — was recorded here as also needing RAUC. **It does not.** The
+  firmware publishes it: `/proc/device-tree/chosen/bootloader/partition` and
+  `.../tryboot`, big-endian, reading **1** and **0** on pi-server today. That
+  check is buildable and testable now, and it belongs in this script rather than
+  in the mark-good wrapper — it is a fact about the boot, not an action.
 
 - [ ] **Bundle build + offline install.** Build the `.raucb` on the VM, sign it,
   put it on a USB stick, `rauc install /media/usb/kosmos-1.4.raucb`. No network in
@@ -1135,18 +1144,28 @@ boot partition).
   software rollback can reach it.
 
 **What this protects against, and what it does not — state it in the docs, don't
-discover it in the field.** The Pi firmware backend cannot implement a
-boot-attempts counter (it is effectively one attempt), and the firmware **cannot
-fall back to the other slot if the primary slot becomes unbootable**.
+discover it in the field.** ✅ **Table corrected 2026-08-23** against the official
+firmware documentation; the version below it was right about the outcome and
+wrong about the mechanism, in both rows.
 
 | Failure | Covered? |
 |---|---|
-| New slot boots, but KosmOS is broken (bad build, missing driver, dead service) | ✅ health check fails → automatic revert |
-| New slot never reaches Linux (bad kernel, corrupt initramfs, wrong DTB) | ❌ tryboot has no fallback; U-Boot's bootcount would catch this, tryboot won't |
+| New slot boots, but KosmOS is broken (bad build, missing driver, dead service) | ✅ health check never marks good → automatic revert |
+| New slot never reaches Linux, **and resets or crashes** (bad kernel, corrupt initramfs, wrong DTB) | ✅ **covered, and this was previously recorded as uncovered.** The tryboot flag is cleared *before* the firmware starts, so any reset lands back on the old slot with no counter needed |
+| New slot never reaches Linux and **hangs without resetting** | ❌ the real hole. Nothing forces the reset: systemd arms the watchdog, and systemd never ran |
+| Committed slot becomes unbootable *after* mark-good | ❌ no tryboot involved any more; `autoboot.txt` points at it permanently |
 
-Mitigations are the watchdog and the EEPROM rule above — not a fix, a reduction.
-"Unbrickable" is not a claim this project gets to make; "one reboot from the last
-known-good userspace" is, and that is worth saying precisely.
+**The mitigation story changes with it.** The watchdog is not a mitigation for
+row 3 — it cannot be, since it is armed by the userspace that failed to start.
+What *is* available and unused is `boot_count`: an 8-bit firmware counter,
+incremented every boot, that a slot's own `config.txt` can test with
+`[boot_count>N]` to select a recovery kernel or cmdline. It cannot switch
+partitions (`autoboot.txt` takes no such filter), so it cannot fix row 4 either.
+
+"Unbrickable" is still not a claim this project gets to make. "One reboot from
+the last known-good userspace, and one power-cycle from the last known-good
+slot **provided the box resets**" is — and the last clause is the part that was
+missing.
 
 **Operational gotcha:** on Pi 5 tryboot, plain `reboot` does **not** switch slots.
 Use `systemctl reboot`, or `reboot '0 tryboot'` explicitly. Any script or health
@@ -1157,25 +1176,94 @@ state the minimum card size in the release notes — this is also an argument fo
 the NVMe HAT path, which is why the U-Boot PCIe limitation above is disqualifying
 rather than academic.
 
-⚠️ **Four upstream claims above are carried in from the drafting session and have
-not been re-verified against current upstream docs (status as of 2026-08-20):**
-that RAUC ships no official Pi firmware backend and Rtone's is the one available;
-that `tryboot` is effectively one attempt, with no boot-attempts counter and no
-firmware-level fallback; that U-Boot lacks BCM2712 PCIe support; and that
-`/dev/vcio` exists only in the Pi kernel tree. The RAUC backend situation in
-particular is the kind of thing that moves between releases. Re-check each before
-it is treated as settled
+### ✅ The four carried-in claims, re-verified 2026-08-23
 
-**Status update 2026-08-23 — one of the four is half-closed, and only half.**
-Item 13a confirmed on real hardware that `/dev/vcio` and `CONFIG_BCM_VCIO` *are
-present on the KosmOS kernel*, which is the load-bearing half: tryboot has the
-char device it needs, so 4d proceeds. It did **not** confirm the exclusivity
-claim — that the driver exists *only* in the Pi tree and not upstream — because
-looking at one Pi kernel cannot show what mainline does or does not carry. That
-half stays unverified, and it is the half that only matters if KosmOS ever builds
-off mainline instead of the RPi fork. The other three claims are untouched — the same rule the ⚠️ rows in `config/frequencies.md`
-follow. **Explicitly not decided here:** pi-gen vs debootstrap for the artifact
-build. That choice belongs to 4a, to be made when the image builder is written.
+They were adopted on 2026-08-20 from a drafting session and flagged as unchecked.
+All four are now closed against current upstream sources and, where the box could
+answer, against pi-server itself. **Two held, one expired, one was wrong in a way
+that hands 4d a mechanism it had written off.** Sources are named so the next
+re-check knows what to re-read rather than re-researching from scratch.
+
+**1. "RAUC ships no official Pi firmware backend." ✅ Holds — but it is in
+flight, and that changes the build-or-wait question.** Latest release is
+**v1.15.2 (2026-03-27)**, with no RPi backend. `rauc/rauc#1599` — *bootchooser:
+add Raspberry Pi firmware initial support* — is **open, unmerged**, last touched
+**2026-08-14**, and now carries the **Release v1.17** milestone with the
+maintainer engaged and a rework branch proposed. Rtone's backend remains the
+available option and says so itself: *"The native bootchooser implementation in
+the RAUC tree is ongoing."*
+→ **Consequence:** a hand-written backend is likely throwaway work, but v1.17 has
+no date. Re-check #1599 before writing one line of custom backend.
+
+**2. "`tryboot` is one attempt, with no boot-attempts counter and no
+firmware-level fallback." ❌ Wrong on the counter. The Pi 5 has one.**
+- *One-shot:* ✅ confirmed verbatim — *"The bootloader/firmware provide a one-shot
+  flag which, if set, is cleared... Since the flag is cleared before starting the
+  firmware, a crash or reset will cause the original `config.txt` file to be
+  loaded on the next reboot."*
+- *No boot-attempts counter:* ❌ **false on Pi 5 and newer.** `boot_count` is an
+  8-bit reset-safe register **incremented at every boot**, wrapping at 256 and
+  cleared only on power loss. **Verified live on pi-server**, two independent
+  ways agreeing: `/proc/device-tree/chosen/bootloader/count` = 8, and
+  `vcmailbox 0x0003008d 4 4 0` = 8. It is readable *and settable* by vcmailbox,
+  and `/usr/bin/vcmailbox` is already installed on the box.
+- *But it cannot pick a slot.* `autoboot.txt` is the only file that selects a
+  partition and it accepts **only `[all]`, `[none]` and `[tryboot]`** — the
+  expression filters that can test `boot_count` are a `config.txt` feature. So
+  the conclusion "no automatic slot-level fallback" survives; the stated reason
+  for it did not.
+- *And "no fallback" was too broad.* A tryboot attempt that **crashes or resets**
+  *does* return to the old slot by itself, because the flag is cleared before the
+  firmware starts. The genuinely uncovered case is narrower and nastier: a
+  **hang that never resets**. The watchdog cannot cover it either — systemd arms
+  the watchdog, and in this failure mode systemd never ran.
+
+  → **Unclaimed mitigation, new as of this check:** `[boot_count>N]` inside a
+  slot's own `config.txt` can select a recovery `cmdline`/kernel/`os_prefix`
+  without Linux having to run. That does not rescue an unbootable slot, but it
+  converts "hangs identically forever" into "third attempt boots something
+  different." Worth designing in; not designed in yet.
+
+**3. "U-Boot lacks BCM2712 PCIe support." ❌ Expired.** Checked against the
+source, not a blog: `configs/rpi_arm64_defconfig` at tag **v2026.07** sets
+`CONFIG_PCI=y`, `CONFIG_PCI_BRCMSTB=y`, `CONFIG_RESET_BRCMSTB=y`,
+`CONFIG_RESET_BRCMSTB_RESCAL=y`, `CONFIG_USB_XHCI_PCI=y`. PCIe enumerates.
+What is still missing is **NVMe**: `CONFIG_NVME_PCI` is absent from that
+defconfig, and U-Boot's NVMe driver lacks the PCIe inbound DMA address
+translation the Pi 5 needs. A July 2026 series proposes both; neither is in
+v2026.07.
+→ **The tryboot decision stands on outcome — U-Boot still cannot boot from NVMe
+— but the disqualifier is eroding and the ROADMAP's stated reason was simply out
+of date.** This is the claim most likely to expire again; re-read the defconfig,
+not commentary about it.
+
+**4. "`/dev/vcio` exists only in the Pi kernel tree." ✅ Holds, both halves now
+closed.** Raspberry Pi's own Upstreaming wiki lists `drivers/char/broadcom/vcio.c`
+as downstream-only, alongside `vc_mem` and `dwc_otg`; the mailbox *interface* was
+upstreamed back in 4.2, but the `/dev/vcio` character device was not. Bootlin
+agrees independently. Item 13a already closed the half that matters locally —
+`CONFIG_BCM_VCIO=y` and the device node present on the KosmOS kernel.
+→ Building off the RPi fork is therefore load-bearing, not incidental.
+
+**Implementation trap found while checking, worth more than the claims:**
+device-tree values are **big-endian**. Reading
+`/proc/device-tree/chosen/bootloader/partition` with a naive `od -An -tu4` yields
+**16777216** where the answer is **1** — a wrong number that looks like a real
+one. The Pi documentation gives the canonical read, and it is the form to copy:
+
+```bash
+printf "%d" "0x$(od -v -An -tx1 /proc/device-tree/chosen/bootloader/partition | tr -d ' ')"
+```
+
+**This also corrects something written in 4d's health-check note.** A slot
+identity check — *am I running the slot I think I am?* — was recorded there as
+needing RAUC. It does not. The firmware publishes both facts directly:
+`/proc/device-tree/chosen/bootloader/partition` and `.../tryboot`. On pi-server
+these read **partition 1, tryboot 0**, which is correct for a box that has never
+been through an A/B install. That check can be written and tested now.
+
+**Explicitly still not decided:** pi-gen vs debootstrap for the artifact build.
+That belongs to 4a — now with the watchdog drop-in finding as a live input.
 
 ---
 
