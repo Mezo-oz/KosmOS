@@ -259,9 +259,9 @@ CONFIG=$(./bench-detect-config.sh)      # prints A, B or C; non-zero if unsure
 **Current headroom** (re-measured 2026-08-23, after the slot check):
 `kosmos-health-check.sh` **398**, `tle-updater.sh` **397**,
 `run-latency-bench.sh` **396**, `install-kernel.sh` 383, `rtl-power-heatmap.py`
-**377**, `run-sdr-bench.sh` 367, `build-rootfs.sh` 352, `layout.sh` 338,
-`01-build-kernel.sh` 329, `02c-sdr-userspace.sh` 298, `install-tle-timer.sh`
-249, `fetch-base.sh` 172, `slot-identity.sh` 157.
+**377**, `layout.sh` 367, `run-sdr-bench.sh` 367, `build-rootfs.sh` 352,
+`01-build-kernel.sh` 329, `02c-sdr-userspace.sh` 298, `assemble-image.sh` 286,
+`install-tle-timer.sh` 249, `fetch-base.sh` 172, `slot-identity.sh` 157.
 
 ### ✅ The rule fired again, 2026-08-23 — and this time it was resisted first
 
@@ -949,7 +949,7 @@ Split by artifact, each independently runnable, sequencer on top — the shape
 |---|---|---|---|
 | 1 | `image/fetch-base.sh` | verified stock `.img` | ✅ built, run on pi-server |
 | 2 | `image/build-rootfs.sh` | KosmOS rootfs (chroot: kernel + userspace) | ✅ built, run on pi-server |
-| 3 | `image/assemble-image.sh` | A/B `.img` per `layout.sh`, both slots + `slots.conf` | · |
+| 3 | `image/assemble-image.sh` | A/B `.img` per `layout.sh`, both slots + `slots.conf` | ✅ built, image produced |
 | 4 | `image/build-image.sh` | sequencer → `.img.gz` | · |
 
 - [x] **Stage 1 — fetch and verify the base.** `image/fetch-base.sh`, 172 lines.
@@ -1032,13 +1032,72 @@ Split by artifact, each independently runnable, sequencer on top — the shape
      from `layout.sh`, which never had it. Both, deliberately: the cost of one
      being missed is a card that eats slot B on first boot.
 
-  Still not exercised: `--kernel` (no kernel package exists on pi-server — the
-  tarball did not survive, so this needs a rebuild) and `--with-satcom` (hours
-  of source builds). The rootfs as built today is base + bench tools, and the
-  script says so on exit rather than implying otherwise.
-- [ ] **Stage 3 — assemble the A/B image.** Consumes `layout.sh sfdisk`,
-  `autoboot`, `cmdline` and `slotmap`; writes the same rootfs into **both**
-  slots so a fresh card has a working fallback from first boot.
+  ✅ **`--kernel` exercised after all.** The ROADMAP's claim that no kernel
+  tarball survives on pi-server was wrong — `~/kosmos/kosmos-kernel-6.12.98-kosmos+.tar.gz`
+  has been sitting there since 2026-07-31 (corrected at its source below). A
+  second run with `--kernel` installed the modules for `6.12.98-kosmos+` and ran
+  `depmod` inside the chroot, and the manifest records the version. So the
+  rootfs is now a real KosmOS rootfs, not base plus bench tools.
+
+  Still not exercised: `--with-satcom`, which is hours of source builds.
+- [x] **Stage 3 — assemble the A/B image.** `image/assemble-image.sh`, 286
+  lines. **The first KosmOS image exists**, built on pi-server in 7m54s:
+  9760 MiB apparent, 4.7 GB on disk because it stays sparse.
+
+  **It contains no partition numbers, sizes or offsets of its own.** Every one
+  comes from `layout.sh` — `sfdisk`, `autoboot`, `cmdline`, `fstab`, `slotmap`,
+  `min-bytes`. This is the consumer that file was written for, and `fstab` was
+  added to it here as a **fifth** emitter rather than being hand-written in the
+  assembler: an fstab naming the other slot's root gives a box that boots,
+  mounts the wrong filesystem over itself, and is then updated in place by an
+  update that believes it is writing to the spare.
+
+  **The kernel-arming step is the one that would have made the image a
+  convincing fake.** The package ships `kernel-kosmos.img`; the base bootfs
+  ships `kernel_2712.img` and `kernel8.img`; and the stock `config.txt` has **no
+  `kernel=` line at all**, so the Pi 5 firmware auto-selects `kernel_2712.img`.
+  Overlay the two naively and the result boots the **stock 6.18.34 kernel** with
+  KosmOS modules sitting unused beside it — no `PREEMPT_RT`, no latency
+  guarantee, and nothing on the box mentioning it. Found by reading the package
+  before the first assembly rather than after. Stage 3 now writes
+  `kernel=kernel-kosmos.img` into each slot's `config.txt` and deletes the stock
+  kernels from that slot: inside 4d the *other slot* is the fallback, so a
+  second kernel in the same slot buys nothing and leaves an ambiguity that only
+  bites when the `kernel=` line goes missing. The health check's "kernel carries
+  `-kosmos`" assertion is the backstop if this is ever got wrong again.
+
+  **Verified by mounting the finished image, not by trusting the log.**
+  Seven partitions matching `layout.sh` exactly; `autoboot.txt` on p1 with slot A
+  default and `[tryboot]` naming B; bootfs A holding only `kernel-kosmos.img`
+  with `root=/dev/mmcblk0p5`, bootfs B the same with `root=…p6`; both roots
+  carrying the right per-slot fstab, an identical `slots.conf`, the health check
+  and its helper under `/usr/local/lib/kosmos/`, and modules for
+  `6.12.98-kosmos+`; the data partition seeded and shared. **The cross-check
+  that matters holds in both slots:** boot p2 → `root=p5` → slot A, boot p3 →
+  `root=p6` → slot B, which is precisely the agreement `slot-identity.sh`
+  asserts at boot.
+
+  **One bug, found by running it.** `rsync -a` into a FAT filesystem fails every
+  file with `chown … Operation not permitted` — `-a` implies `-o -g -p` and FAT
+  has no ownership. It failed loudly at exit 23 rather than producing a
+  half-populated bootfs, and the teardown trap left no mounts or loop devices
+  behind. FAT copies now go through `copy_to_fat()`, which also dereferences
+  symlinks since FAT cannot hold those either.
+
+  ⚠️ **Two things stage 4 should deal with, neither a defect:**
+  - **The roots still carry the stock `6.18.34+rpt` module trees.** With the
+    stock kernels removed from both bootfs they can never be loaded, so that is
+    dead weight in every slot. Removing it is image slimming, and it belongs in
+    stage 4 next to compression rather than being smuggled into stage 3.
+  - **`root=` is a device path, so the image is card-specific.** An image built
+    for `mmcblk0` will not boot from an NVMe HAT, where the same partition is
+    `nvme0n1p5`. `PARTUUID` would survive that. The decision belongs to
+    `layout.sh`, and this is recorded where someone will first hit it — it also
+    sharpens the U-Boot/NVMe question in 4d, since the NVMe path needs this
+    fixed regardless of which bootloader gets there.
+
+  Not verified, and cannot be from here: **that the image actually boots.** It
+  has never been flashed. Everything above is structural.
 - [ ] **Stage 4 — sequencer, compression, release artifact.**
 
 ⚠️ **Disk on the build host is the tight constraint.** pi-server has ~18 GB
@@ -1628,7 +1687,7 @@ KosmOS/
 │   ├── ✅ layout.sh             # A/B layout: THE single source of truth
 │   ├── ✅ fetch-base.sh         # Stage 1: pinned stock Pi OS Lite, verified
 │   ├── ✅ build-rootfs.sh       # Stage 2: chroot install of kernel + userspace
-│   ├── ·  assemble-image.sh     # Stage 3: A/B image per layout.sh
+│   ├── ✅ assemble-image.sh     # Stage 3: A/B image per layout.sh
 │   ├── ·  build-image.sh        # Stage 4: sequencer → .img.gz
 │   ├── ·  build-bundle.sh       # .raucb bundle from a built image
 │   ├── ·  rauc/
@@ -1700,8 +1759,16 @@ of the repo on the Pi.
       appending `nohz_full=1-3 rcu_nocbs=1-3`, then rebooting. **Not** by re-running
       the installer: `install-kernel.sh` resolves its package directory from its own
       location and needs `boot/`, `kernel-version` and `modules/` beside it — that
-      is the extracted tarball, not the repo clone, and no tarball survives on
-      pi-server. Back up the file first; it must stay a single line.
+      is the extracted tarball, not the repo clone. Back up the file first; it
+      must stay a single line.
+
+      ✅ **Corrected 2026-08-23: a tarball *does* survive on pi-server** —
+      `~/kosmos/kosmos-kernel-6.12.98-kosmos+.tar.gz`, 32 MB, dated 2026-07-31,
+      alongside the staged `kosmos-kernel-pkg/` and the 3.1 GB `linux` build
+      tree at the pinned commit `f5a99b95…`. The claim above was written when
+      nobody had looked. Finding it is what let 4a stages 2 and 3 produce a real
+      KosmOS image rather than a base-plus-bench-tools one, so the correction is
+      worth more than the disk it occupies.
    3. **A — already banked**, so no third boot. To redo it: comment the two
       directives in the KosmOS block of `config.txt` and reboot.
 
