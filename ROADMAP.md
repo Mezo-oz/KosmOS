@@ -211,10 +211,15 @@ detection returns the configuration letter on stdout:
 CONFIG=$(./bench-detect-config.sh)      # prints A, B or C; non-zero if unsure
 ```
 
-**Current headroom** (measured 2026-08-05): `tle-updater.sh` **397**,
+**Current headroom** (re-measured 2026-08-23): `tle-updater.sh` **397**,
 `run-latency-bench.sh` **396**, `install-kernel.sh` 383, `rtl-power-heatmap.py`
-**377**, `run-sdr-bench.sh` 363, `01-build-kernel.sh` 319, `02c-sdr-userspace.sh`
-298, `install-tle-timer.sh` 249.
+**377**, `run-sdr-bench.sh` 363, `01-build-kernel.sh` 329, `layout.sh` 310,
+`02c-sdr-userspace.sh` 298, `install-tle-timer.sh` 249.
+
+`01-build-kernel.sh` moved 319 → 329 taking the Phase 4d config gate; `layout.sh`
+enters the table at 310, new since the 2026-08-05 measurement. The top four are
+unchanged and still the ones to watch — three of them within four lines of the
+cap.
 
 **The cap now gates Python too.** Standard 1 says "≤400 lines per file" and this
 document has named Python a first-class language since the standards were
@@ -977,8 +982,34 @@ boot partition).
   put it on a USB stick, `rauc install /media/usb/kosmos-1.4.raucb`. No network in
   either direction: not to update, not to roll back. This is the field story.
 
-- [ ] **Hardware watchdog** — BCM2712 watchdog enabled and armed via systemd
-  `RuntimeWatchdogSec`, so a hang forces a reset instead of a silent brick.
+- [x] **Hardware watchdog** — ✅ **verified present and already armed,
+  2026-08-23. Nothing to implement; the work here is to not lose it.**
+
+  The driver binds (`watchdog0`, `bcm2835-wdt`, identity `Broadcom BCM2835
+  Watchdog timer`, `state=active`, `timeout=60`), and systemd is already holding
+  it: `RuntimeWatchdogUSec=1min`, `RebootWatchdogUSec=2min`, with PID 1 owning
+  `/dev/watchdog0`. A hang on this box already forces a reset today.
+
+  **The important part is where that came from.** Not `/etc/systemd/system.conf`
+  — every watchdog line there is still commented out — and not from KosmOS. It
+  is `/usr/lib/systemd/system.conf.d/40-rpi-enable-watchdog.conf`, shipped by
+  Raspberry Pi OS. The kernel command line agrees, carrying `reboot=w`.
+
+  So this item was never a task; it was an inherited default that the roadmap
+  had written down as work. Two consequences, and the second is the one that
+  costs money if missed:
+
+  1. **The health check must assert it rather than assume it** — the armed
+     watchdog is a property of the base image, and 4d's whole design leans on it
+     as the mitigation for the unbootable-slot hole below. Something that arrives
+     for free can leave for free.
+  2. **This is now a live input to 4a's deferred pi-gen vs debootstrap choice.**
+     A debootstrap image is not Pi OS and does not carry
+     `40-rpi-enable-watchdog.conf`, so it would silently drop the one mitigation
+     standing between 4d and a brick — silently, again, because an unarmed
+     watchdog looks exactly like an armed one until the day something hangs. Not
+     an argument that settles the choice; an item that has to be paid for
+     explicitly if debootstrap wins.
 
 - [ ] **Keep the EEPROM bootloader out of the update path entirely.** Bricking
   there is the one failure mode that requires a physical card pull, and no
@@ -1014,7 +1045,16 @@ that `tryboot` is effectively one attempt, with no boot-attempts counter and no
 firmware-level fallback; that U-Boot lacks BCM2712 PCIe support; and that
 `/dev/vcio` exists only in the Pi kernel tree. The RAUC backend situation in
 particular is the kind of thing that moves between releases. Re-check each before
-it is treated as settled — the same rule the ⚠️ rows in `config/frequencies.md`
+it is treated as settled
+
+**Status update 2026-08-23 — one of the four is half-closed, and only half.**
+Item 13a confirmed on real hardware that `/dev/vcio` and `CONFIG_BCM_VCIO` *are
+present on the KosmOS kernel*, which is the load-bearing half: tryboot has the
+char device it needs, so 4d proceeds. It did **not** confirm the exclusivity
+claim — that the driver exists *only* in the Pi tree and not upstream — because
+looking at one Pi kernel cannot show what mainline does or does not carry. That
+half stays unverified, and it is the half that only matters if KosmOS ever builds
+off mainline instead of the RPi fork. The other three claims are untouched — the same rule the ⚠️ rows in `config/frequencies.md`
 follow. **Explicitly not decided here:** pi-gen vs debootstrap for the artifact
 build. That choice belongs to 4a, to be made when the image builder is written.
 
@@ -1249,9 +1289,11 @@ of the repo on the Pi.
    ran twice, and the earlier pass's rows had to be removed because nothing backed
    them. Check the row count before transcribing.
 
-   Fill `uname -v` into `BENCHMARKS.md`, which is still marked *(fill after first
-   boot)*. Take the exact string from the box — `02a-verify-kernel.sh` confirms
-   `PREEMPT_RT` is in it, but the build banner has not been captured here.
+   ~~Fill `uname -v` into `BENCHMARKS.md`~~ ✅ **already done; this instruction
+   was stale.** `BENCHMARKS.md:89` carries `#1 SMP PREEMPT_RT Fri Jul 31
+   02:36:12 BST 2026`, and it was re-read off pi-server on 2026-08-23 and matches
+   the running kernel byte for byte. No `(fill after first boot)` marker survives
+   anywhere in the tree.
 
    ⚠️ **`--quick` rows are indistinguishable from real ones.**
    `run-latency-bench.sh` appends to `results/summary.tsv` with no loop-count or
@@ -1417,17 +1459,46 @@ of the repo on the Pi.
     linted**, pinned from line one. Still needs its first run on pi-server;
     nothing in it has been executed.
 12. First NOAA APT capture using SatDump
-13. **A/B pre-checks (no purchase, no reboot required)** — on pi-server:
-    a. `zcat /proc/config.gz | grep -i -e VCIO -e BCM2835_WDT` and `ls /dev/vcio`
-       — confirm the tryboot mechanism's kernel dependency is actually present on
-       the running KosmOS kernel. Both symbols are now pinned in
-       `kernel/sdr-rt.config`, but pinned on an **unverified** symbol name: if
-       this check comes back empty the pin is wrong and must be corrected before
-       the next build, not after.
-    b. `ls /sys/class/watchdog/` — confirm the watchdog driver binds on BCM2712,
-       not merely that the option is set.
-    Findings go in 4d. If (a) is missing, 4d's slot mechanism needs rethinking
-    before any RAUC config is written.
+13. ~~**A/B pre-checks (no purchase, no reboot required)** — on pi-server~~
+    ✅ **both run 2026-08-23**, against the running KosmOS kernel
+    (`6.12.98-kosmos+`, `#1 SMP PREEMPT_RT Fri Jul 31 02:36:12 BST 2026`).
+    Full findings in 4d; the short version is that **the mechanism is available
+    and the pin protecting it was broken.**
+
+    a. **`/dev/vcio` is present** — `crw-rw---- root video 10, 257` — and
+       `CONFIG_BCM_VCIO=y` is in `/proc/config.gz`. tryboot's kernel dependency
+       is real on this hardware, so 4d's slot mechanism stands as designed and
+       RAUC config work is unblocked.
+
+       **But the pinned symbol name was wrong.** `sdr-rt.config` pinned
+       `CONFIG_BCM2835_VCIO`, which does not exist in the Pi tree. This is the
+       failure this check was written to catch, and it is worth stating exactly
+       why it was invisible: `merge_config.sh` does not fail — or even warn — on
+       a symbol it has never heard of, and the Pi defconfig sets the real symbol
+       anyway. So the kernel came out correct, the pin contributed nothing, and
+       *nothing anywhere would have said so.* A pin whose only evidence of
+       working is that the default already agrees with it is not a pin.
+
+       **Sharper still: the running kernel is not evidence about the fragment at
+       all.** It was built 2026-07-31; the 4d block was added to
+       `sdr-rt.config` on 2026-08-20 (`ccdc5e9`). The fragment has therefore
+       never been through a build. `CONFIG_BCM_VCIO=y` on this box comes from
+       the Pi defconfig and nothing else, and the corrected pin remains untested
+       until the next kernel build runs — at which point the new gate is what
+       will actually exercise it.
+
+       Fixed to `CONFIG_BCM_VCIO=y`, and both 4d symbols were added to
+       `verify_critical_config()` in `01-build-kernel.sh` — reading the merged
+       `.config` back is the only check that can catch a name the merge silently
+       discards. Note this was **luck, not a near miss**: had the guess been
+       wrong on a symbol the defconfig does *not* supply, the mechanism would
+       have been absent and discovered only when tryboot failed on a box in the
+       field.
+
+    b. **The watchdog driver binds** — `/sys/class/watchdog/watchdog0` →
+       `107d200000.watchdog/bcm2835-wdt`, identity `Broadcom BCM2835 Watchdog
+       timer`, `state=active`, `timeout=60`, `bootstatus=0`. Not merely set in
+       config: bound, on BCM2712, on this kernel.
 
 **Carried forward from the audit, not yet scheduled:**
 - ~~shellcheck has never been run~~ ✅ **verified at zero.** 11 findings fixed:

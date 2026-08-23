@@ -83,6 +83,15 @@ JOBS="${JOBS:-$(nproc)}"
 # Called twice: once after the merge (so a dependency problem is diagnosed
 # immediately) and once after menuconfig (so the state actually compiled is the
 # state verified).
+#
+# The two Phase 4d symbols are here for a third failure mode, found on
+# 2026-08-23: merge_config.sh does not fail on a symbol that does not exist, so
+# a misspelled pin in the fragment is not a warning, it is nothing at all. The
+# VCIO pin had been misspelled since it was written and the resulting kernel was
+# fine anyway, because the Pi defconfig supplies that symbol. A pin whose only
+# evidence of working is that the default already agrees with it is not
+# protecting anything. Reading the merged .config back is the check the merge
+# itself cannot perform.
 verify_critical_config() {
     local when="$1"
     local failed=0
@@ -90,7 +99,8 @@ verify_critical_config() {
     echo ""
     echo "       Verifying critical options ($when)..."
 
-    for opt in CONFIG_PREEMPT_RT=y CONFIG_HZ_1000=y CONFIG_IKCONFIG_PROC=y; do
+    for opt in CONFIG_PREEMPT_RT=y CONFIG_HZ_1000=y CONFIG_IKCONFIG_PROC=y \
+               CONFIG_BCM_VCIO=y CONFIG_BCM2835_WDT=y; do
         if grep -qx -- "$opt" .config; then
             echo "         $opt"
         else
@@ -106,7 +116,7 @@ verify_critical_config() {
         echo "       KosmOS claims, and nothing would tell you until after the"
         echo "       install and reboot."
         echo ""
-        echo "       Inspect with:  grep -E 'PREEMPT|CONFIG_HZ|IKCONFIG' .config"
+        echo "       Inspect with:  grep -E 'PREEMPT|CONFIG_HZ|IKCONFIG|VCIO|WDT' .config"
         echo "       An unmet dependency in the kernel branch or defconfig is the"
         echo "       usual cause when this fails right after the merge."
         exit 1
