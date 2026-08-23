@@ -30,40 +30,19 @@
 # ordinary user. Anything requiring privilege is therefore out, which is why
 # 02a's `sudo modprobe ax25` check did not come across.
 #
-# ----------------------------------------------------------------------------
-# CRITICAL vs ADVISORY — the design decision this script turns on
-# ----------------------------------------------------------------------------
-# Only CRITICAL checks affect the exit code. ADVISORY checks are printed and
-# then deliberately ignored.
+# CRITICAL vs ADVISORY. Only CRITICAL affects the exit code; ADVISORY is
+# printed and then deliberately ignored. The dividing line is *who broke it* --
+# the image, which reverting fixes, versus the operator (removable hardware,
+# site config, the network), which reverting cannot, since the previous slot
+# fails identically. Erring toward CRITICAL builds a box that reverts every
+# update because a dongle is unplugged, then reverts again: a rollback trigger
+# firing on facts the rollback cannot change is worse than none, because it
+# spends the only recovery mechanism the design has.
 #
-# The dividing line is *who broke it*:
-#
-#   CRITICAL — the image. Something that ships inside the slot is missing or
-#              wrong, so the update itself is bad and reverting fixes it.
-#
-#   ADVISORY — the operator. Removable hardware, site configuration, the
-#              network. Reverting cannot fix any of these, because the previous
-#              slot would fail exactly the same way.
-#
-# Getting this wrong in the ADVISORY direction is merely noisy. Getting it
-# wrong in the CRITICAL direction produces a box that reverts every update
-# because a USB dongle is unplugged, and which reverts again on the next
-# attempt, and the next — an appliance that refuses to be updated for a reason
-# the update had nothing to do with. A rollback trigger that fires on facts the
-# rollback cannot change is worse than no rollback trigger, because it burns
-# the one recovery mechanism the design has.
-#
-# The rule falls out cleanly on the two checks the ROADMAP asked for by name:
-#   - "SDR enumerates on USB" splits. rtl_test being installed is the image
-#     (CRITICAL). A dongle answering on the bus is the operator's desk
-#     (ADVISORY) — see also that Test 2 has been hardware-blocked for weeks,
-#     which is precisely a healthy box with no dongle in it.
-#   - "TLE timer loaded and not failed" splits the same way. The unit files
-#     being present is the image (CRITICAL). Whether an instance is enabled,
-#     and whether its last run failed, is operator policy and reachability
-#     (ADVISORY) — and note the field story for 4d is explicitly *no network*,
-#     so a failed TLE refresh is the expected steady state in the field, not a
-#     symptom. Making that critical would revert every update made offline.
+# The full reasoning, and why "SDR enumerates" and "TLE timer loaded" each
+# split across the two tiers rather than landing in one, is in ROADMAP.md 4d.
+# It is not repeated here: that document owns rationale, and this header
+# carrying a second copy is how the two drift apart.
 # ============================================================================
 
 set -euo pipefail
@@ -202,29 +181,16 @@ check_watchdog() {
 
 # --- CRITICAL: gr-kosmos is really importable -------------------------------
 #
-# Import a SUBMODULE, never the bare package, and run with -P.
+# Import a SUBMODULE, never the bare package, and always with -P. `import
+# kosmos` alone PASSES on a box with no gr-kosmos installed: Python invents a
+# namespace package from any kosmos/ directory on sys.path, and the cwd is on
+# that path. Caught doing exactly that on pi-server 2026-08-23. A submodule
+# import has no namespace package to satisfy it, and -P removes the cwd from
+# the path entirely, so the answer cannot depend on where the service started.
 #
-# `python3 -c "import kosmos"` is worthless as a check and actively dangerous
-# here. Python invents an implicit namespace package from any directory called
-# kosmos/ that happens to be on sys.path — including the current working
-# directory, which is on the path by default. Observed on pi-server 2026-08-23:
-# the import SUCCEEDED, with __file__ = None, from an unrelated ~/kosmos
-# directory, on a box where gr-kosmos is not installed at all. A health check
-# that passes when the module is missing marks a broken slot good, which is the
-# exact failure this script exists to prevent.
-#
-# Importing a submodule defeats it (a namespace package has no code to import
-# from), and -P stops the cwd being prepended to sys.path at all, so the result
-# cannot depend on where the service happened to be started. Belt and braces on
-# purpose: this check has already been caught lying once.
-#
-# Split into two checks on purpose. kosmos/__init__.py re-exports the
-# discontinuity probe, which imports numpy, pmt and gnuradio.gr, so ANY import
-# from the package drags in the whole GNU Radio stack. Asking one question would
-# therefore report "gr-kosmos is broken" when the real fault is that GNU Radio
-# is missing, and send whoever reads the journal to the wrong place. The
-# dependency itself is correct and stays: an out-of-tree module without the
-# framework it plugs into is not installed in any sense worth passing.
+# Two checks, not one: kosmos/__init__.py re-exports the probe, which imports
+# gnuradio.gr, so any import drags in the whole stack and a single check would
+# blame gr-kosmos for a missing GNU Radio. Full write-up in ROADMAP.md 4d.
 check_gnuradio() {
     if ! command -v python3 > /dev/null 2>&1; then
         critical_fail "GNU Radio imports" "no python3 on PATH"
@@ -292,6 +258,65 @@ check_tle_units() {
     fi
 }
 
+# --- CRITICAL: we are running the slot we think we are ----------------------
+#
+# slot-identity.sh beside this file gathers the facts; this renders the verdict.
+# What each verdict means, and why `no-slotmap` is not a failure, is documented
+# there -- it owns slot semantics and has the room for them.
+check_slot_identity() {
+    local helper facts verdict slot tryboot boot_p root_p
+    helper="$(dirname -- "${BASH_SOURCE[0]}")/slot-identity.sh"
+
+    if [ ! -x "$helper" ]; then
+        critical_fail "slot identity" "slot-identity.sh missing beside this script"
+        return
+    fi
+
+    if ! facts=$("$helper" 2>&1); then
+        # Could not ANSWER the question, which is not the same as a bad answer.
+        critical_fail "slot identity" "${facts##*: }"
+        return
+    fi
+
+    verdict=""; slot=""; tryboot=""; boot_p=""; root_p=""
+    while IFS='=' read -r key value; do
+        case "$key" in
+            VERDICT)        verdict="$value" ;;
+            SLOT)           slot="$value" ;;
+            TRYBOOT)        tryboot="$value" ;;
+            BOOT_PARTITION) boot_p="$value" ;;
+            ROOT_PARTITION) root_p="$value" ;;
+        esac
+    done <<< "$facts"
+
+    case "$verdict" in
+        consistent)
+            ok "slot identity" "slot $slot (boot p$boot_p, root p$root_p)"
+            ;;
+        mismatch)
+            critical_fail "slot identity" \
+                "CROSS-SLOT: boot p$boot_p is slot $slot, root is p$root_p"
+            ;;
+        no-slotmap)
+            advisory_warn "slot identity" \
+                "no slot map — single-root image, boot p$boot_p, root p$root_p"
+            ;;
+        *)
+            # unmapped, or a verdict this script does not know. Both mean the
+            # box is not the shape the map describes; neither is safe to commit.
+            critical_fail "slot identity" \
+                "$verdict: boot p$boot_p, root p$root_p"
+            ;;
+    esac
+
+    # Surfaced separately because it is not a fault, it is a countdown. On a
+    # tryboot boot nothing has been committed: if this box reboots for any
+    # reason before mark-good runs, it lands back on the other slot.
+    if [ "$tryboot" = "1" ]; then
+        advisory_warn "tryboot" "PROVISIONAL boot — not committed until marked good"
+    fi
+}
+
 # --- ADVISORY: a dongle is actually plugged in ------------------------------
 #
 # rtl_test -t is the repo's existing way of asking, and it beats matching USB
@@ -353,6 +378,7 @@ check_gnuradio
 check_gr_kosmos
 check_satcom_binaries
 check_tle_units
+check_slot_identity
 
 echo ""
 echo "ADVISORY — reported only; never affects the verdict:"

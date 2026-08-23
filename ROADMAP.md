@@ -256,22 +256,44 @@ detection returns the configuration letter on stdout:
 CONFIG=$(./bench-detect-config.sh)      # prints A, B or C; non-zero if unsure
 ```
 
-**Current headroom** (re-measured 2026-08-23): `tle-updater.sh` **397**,
+**Current headroom** (re-measured 2026-08-23, after the slot check):
+`kosmos-health-check.sh` **398**, `tle-updater.sh` **397**,
 `run-latency-bench.sh` **396**, `install-kernel.sh` 383, `rtl-power-heatmap.py`
-**377**, `kosmos-health-check.sh` **372**, `run-sdr-bench.sh` 367,
-`01-build-kernel.sh` 329, `layout.sh` 310, `02c-sdr-userspace.sh` 298,
-`install-tle-timer.sh` 249.
+**377**, `run-sdr-bench.sh` 367, `layout.sh` 338, `01-build-kernel.sh` 329,
+`02c-sdr-userspace.sh` 298, `install-tle-timer.sh` 249, `slot-identity.sh` 157.
 
-`01-build-kernel.sh` moved 319 → 329 taking the Phase 4d config gate; `layout.sh`
-enters at 310, new since the 2026-08-05 measurement; `kosmos-health-check.sh`
-enters at 372, fifth from the top on its first commit. The top four are unchanged
-and still the ones to watch — three of them within four lines of the cap.
+### ✅ The rule fired again, 2026-08-23 — and this time it was resisted first
 
-⚠️ **The new entry is the one to watch next.** 4d's health check still has a
-mark-good wrapper and a systemd unit to gain, and the natural instinct will be
-to put them in this file. They go in their own files beside it; at 372 lines
-there is no room to grow the checker, and the extraction rule's trigger is a
-file that exceeds 400 and cannot lose them elsewhere.
+Adding the slot identity check took `kosmos-health-check.sh` to **437**, and the
+warning written into this table one commit earlier — *the next thing you add goes
+in its own file* — is exactly what happened. Worth recording how it resolved,
+because the first instinct was wrong twice over.
+
+The check had *already* been extracted: `slot-identity.sh` holds the reading and
+the slot arithmetic. What overflowed the file was only the 49 lines of wiring
+that judge its output. So "extract the check" was not available as an answer —
+it was already done.
+
+The rule's trigger is a file that exceeds 400 **and cannot lose the lines
+elsewhere**, and that second clause did the work here. Three things came out,
+none of them the check:
+
+- **35 lines of the header** restating the CRITICAL vs ADVISORY rationale that
+  had been written into 4d one commit earlier. Two copies of one argument, and
+  this document owns rationale. Replaced with the contract and a pointer.
+- **13 lines** of the namespace-package write-up, same reason, same fix.
+- **Five `sed` passes** over the helper's output, replaced by one read loop —
+  shorter *and* better, which is the tell that it was fat rather than substance.
+
+That landed it at **398**. Two lines of headroom is not a comfortable place to
+stop, and it is stated plainly rather than left to be discovered: **the next
+addition to this file has nowhere to go and must extract for real.** The
+mark-good wrapper and its unit were always going to be separate files; now they
+have to be.
+
+The rule's value here was not the split it forced. It was the duplication it
+surfaced — prose drifting out of the ROADMAP and into a script header, which no
+line count would have caught on its own.
 
 **The cap now gates Python too.** Standard 1 says "≤400 lines per file" and this
 document has named Python a first-class language since the standards were
@@ -1099,12 +1121,45 @@ boot partition).
   rather than being written blind, and see claim 1 below: an official backend is
   targeted at RAUC v1.17, which makes a hand-written one likely throwaway.
 
-  ⚠️ **Correction, 2026-08-23:** a slot-identity check — *are we running the slot
-  we think we are?* — was recorded here as also needing RAUC. **It does not.** The
-  firmware publishes it: `/proc/device-tree/chosen/bootloader/partition` and
-  `.../tryboot`, big-endian, reading **1** and **0** on pi-server today. That
-  check is buildable and testable now, and it belongs in this script rather than
-  in the mark-good wrapper — it is a fact about the boot, not an action.
+  ✅ **Slot identity check — built and tested on hardware, 2026-08-23.** It had
+  been recorded here as needing RAUC. It does not: the firmware publishes both
+  facts into the device tree, so it works on any Pi 5 with nothing installed.
+
+  `image/health-check/slot-identity.sh` (157 lines) gathers the facts and prints
+  them as `KEY=VALUE`; `kosmos-health-check.sh` renders the verdict. Helper
+  returns data, caller judges — the same split `detect-config.sh`,
+  `governor.sh` and `thermal-state.sh` already use.
+
+  **The question it answers is not "which slot am I", it is "do my two halves
+  agree".** A cross-slot boot — bootfs A with root B — is the nastiest state in
+  4d, because the box runs and looks perfect: the next update writes into what
+  it believes is the inactive slot and overwrites the root it is running from.
+  Naming the slot from the *boot* partition is the deliberate half of that. The
+  firmware's choice is what `autoboot.txt` made and what a rollback changes; the
+  root is downstream, named by that slot's own `cmdline.txt`. So boot is the
+  identity and root is what gets checked against it.
+
+  Four verdicts, each exercised on pi-server: `consistent`, `mismatch`,
+  `unmapped`, `no-slotmap`. The last is **advisory, not critical** — a pre-4d
+  KosmOS install is a single-root image with no slots, and condemning it would
+  revert good updates on every box older than the A/B layout. Exit code
+  separates *bad answer* from *no answer*: `mismatch` exits 0 and reports, while
+  a missing device tree exits non-zero, because the caller must be able to tell
+  "the slot is wrong" from "the question could not be asked".
+
+  **The numbers come from `layout.sh`, not from the checker.** It gained a
+  `slotmap` command emitting `/etc/kosmos/slots.conf`, which the image build
+  writes to the target. A health check carrying its own copy of p2/p3/p5/p6
+  would be the two-places-one-fact hazard `layout.sh` exists to abolish — and
+  the worst instance of it yet, since the consumer that drifts is the one
+  deciding whether to roll an update back. The map is parsed, never sourced:
+  it is read by root at boot, and values are constrained to digits. Tested with
+  a shell-injection payload in a value — rejected, nothing executed.
+
+  **Proof it can veto.** With the throwaway harness making every other check
+  pass, a *consistent* map gives HEALTHY exit 0, and a *cross-slot* map with
+  everything else byte-identical gives UNHEALTHY exit 1 on that one check alone.
+  A box with no map at all stays HEALTHY, exit 0, warning only.
 
 - [ ] **Bundle build + offline install.** Build the `.raucb` on the VM, sign it,
   put it on a USB stick, `rauc install /media/usb/kosmos-1.4.raucb`. No network in
@@ -1415,6 +1470,7 @@ KosmOS/
 │   │   └── ·  kosmos.cert.pem   # Signing cert; private key NEVER committed
 │   └── health-check/            # Gate that calls rauc status mark-good
 │       ├── ✅ kosmos-health-check.sh # The verdict: exit 0 = safe to mark good
+│       ├── ✅ slot-identity.sh       # Which slot booted, and do boot+root agree (helper)
 │       ├── ·  kosmos-mark-good.sh    # Wrapper: runs the above, then rauc
 │       └── ·  kosmos-mark-good.service
 └── ✅ .gitignore
