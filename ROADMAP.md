@@ -256,19 +256,29 @@ detection returns the configuration letter on stdout:
 CONFIG=$(./bench-detect-config.sh)      # prints A, B or C; non-zero if unsure
 ```
 
-**Current headroom** (re-measured 2026-08-23, after the first full SATCOM build):
-`build-rootfs.sh` **400 — AT THE CAP**, `kosmos-health-check.sh` **398**,
-`tle-updater.sh` **397**, `run-latency-bench.sh` **396**, `install-kernel.sh`
-383, `layout.sh` 381, `rtl-power-heatmap.py` **377**, `run-sdr-bench.sh` 367,
-`02c-sdr-userspace.sh` 352, `01-build-kernel.sh` 329, `assemble-image.sh` 296,
-`install-tle-timer.sh` 249, `03c-sdrpp.sh` 203, `fetch-base.sh` 172,
-`slot-identity.sh` 157.
+**Current headroom** (re-measured 2026-08-24, after `verify-image.sh`):
+`build-rootfs.sh` **399**, `kosmos-health-check.sh` **398**, `tle-updater.sh`
+**397**, `run-latency-bench.sh` **396**, `assemble-image.sh` **393**,
+`install-kernel.sh` 383, `layout.sh` 381, `rtl-power-heatmap.py` **377**,
+`run-sdr-bench.sh` 367, `02c-sdr-userspace.sh` 352, `01-build-kernel.sh` 329,
+`verify-image.sh` 319, `install-tle-timer.sh` 249, `03a-gnuradio-stack.sh` 227,
+`thermal-state.sh` 207, `03b-satdump.sh` 206, `03c-sdrpp.sh` 203,
+`02a-verify-kernel.sh` 198, `fetch-base.sh` 172, `slot-identity.sh` 157.
 
-⚠️ **Two files now have no room at all.** `build-rootfs.sh` sits at exactly 400
-taking `clean_rootfs`, and `kosmos-health-check.sh` at 398. The rule is ≤400, so
-both are compliant and neither can take another line. **The next addition to
-either must extract**, and unlike the last time this came up there is no
-duplicated prose left in them to reclaim — the honest fat has already been cut.
+⚠️ **Five files now have under ten lines of room.** The two flagged on
+2026-08-23 have been joined by `assemble-image.sh`, which took **97 lines** for
+first-boot access provisioning and went 296 to 393 in one commit with nobody
+watching the number. That is the more useful of the two warnings: a file does
+not approach the cap gradually. It takes one feature and arrives.
+
+The rule is 400, so all five are compliant and none of them can take a feature.
+**The next addition to any of them must extract**, and unlike the last time this
+came up there is no duplicated prose left to reclaim — the honest fat is cut.
+
+`verify-image.sh` was written against this at 319: its per-slot checks are three
+functions (`verify_boot`, `verify_root`, `verify_access`) rather than one, which
+is what keeps every function inside the 60-line rule and leaves the file room to
+grow a section when 4b adds one.
 
 ### ✅ The rule fired again, 2026-08-23 — and this time it was resisted first
 
@@ -907,40 +917,85 @@ appliance. Phases 1–2 build the parts; Phase 3 makes them run themselves.*
 **⏳ Started 2026-08-23.** The base-image question 4d deferred here is decided,
 and stages 1–3 are built and have run on hardware.
 
-##### 📌 PICK UP HERE — paused 2026-08-23, end of session
+##### 📌 PICK UP HERE — paused 2026-08-24
 
-**State:** all four builder stages exist and have run. The SATCOM stack has
-executed end to end for the first time. The root slot was measured and resized
-4096 → 6144 MiB. Everything is committed and pushed; CI green.
+**State:** the image built on 2026-08-23 has now been **inspected rather than
+trusted**. `image/verify-image.sh` mounts it read-only and asserts 96 things
+about it against `layout.sh`; all 96 hold. Stages 1–3 are built, run, and their
+product is checked. Stage 4 is the only stage left, and it is the last thing
+between here and a release artifact.
 
-**In flight when the session ended:** `assemble-image.sh` was running on
-pi-server, building the first image with the 6 GiB layout, the KosmOS kernel,
-**and** first-boot access provisioning. It was on `populate root B` — the last
-large copy — with `seed_data` after it, so it will have finished on its own.
-Log: `/var/tmp/kosmos-clean-build.log` and `/var/tmp/kosmos-assemble.log`;
-image at `/var/tmp/kosmos-build/kosmos-rpi5.img`.
-
-**First thing to do next session — verify, do not assume.** The image was never
-inspected after this run. Mount it and check, in both slots: the `kosmos` user
-exists with `/bin/bash` and uid 1000; `~/.ssh/authorized_keys` has the two keys,
-mode 0600; `/etc/sudoers.d/010-kosmos-nopasswd` exists at 0440;
-`multi-user.target.wants/` contains `ssh.service` and **not**
-`userconfig.service`; `sshd_config.d/10-kosmos.conf` is present; and the
-partition table matches `layout.sh` at 6144 MiB slots.
-
-**Then: flashing, which could not be done from here.** pi-server has exactly one
-block device — the card it runs from — so there is nowhere to write. Flashing
-needs a card reader on another machine and a spare card. **Keep pi-server intact
-until the new card is proven**; it is the only route back, and the image has
-still never booted.
+**Next: flashing, which still cannot be done from here.** pi-server has exactly
+one block device — the card it runs from — so there is nowhere to write.
+Flashing needs a card reader on another machine and a spare card. **Keep
+pi-server intact until the new card is proven**; it is the only route back, and
+the image has still never booted.
 
 **Known-open, in the order they will bite:**
-1. The image has never booted. Everything verified so far is structural.
+1. The image has never booted. Everything verified so far is structural, and
+   `verify-image.sh` says so in its own header and in its passing output.
 2. SDR++'s module set is decided by what earlier stages drag in — see the
    ⚠️ under stage 2. Not fixed.
 3. `root=` is a device path, so the image is card-specific (no NVMe).
 4. Stock `6.18.34` module trees are dead weight in both slots (64 MiB each).
 5. `rauc/rauc#1599` — re-check before writing any custom backend.
+
+##### ✅ Stage 3's product is verified — 96 checks, 2026-08-24
+
+The checklist this section carried overnight — *mount it and check the user,
+the keys, the sudoers drop-in, the enabled units, the partition table* — was
+written as a script instead of worked through by hand, because it is going to be
+run after every build and a checklist run by hand is run once.
+
+`image/verify-image.sh`, 319 lines. Read-only throughout: the loop device is
+attached with `-r` and every mount is `ro`, so verifying an image cannot be what
+modifies it, and a pass can be taken between building the image and hashing it.
+
+**It derives nothing.** Every expected value comes from `layout.sh` or from the
+image itself; the file contains no offset, no size and no partition number of
+its own. A check carrying its own copy of the answer is a check that goes on
+agreeing with itself after `layout.sh` changes — which is exactly what happened
+to the 4096 MiB slot size, and would have happened again here.
+
+**All 96 hold**, in both slots: the seven partitions match `layout.sh` to the
+sector; `autoboot.txt` is byte-identical to the emitter and is the only file on
+p1; each bootfs holds `kernel-kosmos.img` with the stock `kernel_2712.img` and
+`kernel8.img` gone and `kernel=kernel-kosmos.img` written into `config.txt`;
+each root carries its own fstab, an identical `slots.conf`, modules and a
+populated `modules.dep` for `6.12.98-kosmos+`, the health check and
+`slot-identity.sh`, and all five SATCOM binaries; the `kosmos` account is uid
+1000 with `/bin/bash`, `authorized_keys` is 0600 `1000:1000` with two keys,
+the sudoers drop-in is 0440, `ssh.service` is enabled, `userconfig.service` is
+not, and the sshd drop-in is key-only. No `pi` user survives in either slot.
+
+**Two things it was written NOT to do**, both of which would have made it the
+kind of check this phase keeps producing:
+
+- **It does not look up the SATCOM binaries on `PATH`.** The build host has
+  every one of them installed, so `command -v satdump` passes on an image
+  containing none — the first draft did exactly this. They are named by
+  absolute path inside the mount.
+- **It does not diff `cmdline.txt` and `fstab` against `layout.sh` and call
+  that a cross-check.** Both files are generated by the same emitter, so
+  agreeing with it proves only that it was run twice. What matters is that
+  they agree with *each other* and name the partition they were **found on**:
+  a slot whose `root=` points at the other slot boots, mounts the wrong
+  filesystem over itself, and is then updated in place by an update that
+  believes it is writing to the spare. That check reads only the image.
+
+**And it was falsified before being believed**, which is the step that was
+missing from every check this phase got wrong. A verifier that cannot fail is
+indistinguishable from one that works. Two deliberately wrong runs against the
+same good image: `KOSMOS_TARGET_DEV=/dev/nvme0n1` fails 4 checks (both cmdline
+and both fstab), `KOSMOS_LOGIN_USER=nosuchuser` fails 18 (the whole access
+section, in both slots). The assertions bite.
+
+One real defect in the first run, and it was the test's, not the image's: the
+expected root device was assembled as `${TARGET_DEV}${part}`, giving
+`/dev/mmcblk05` for a partition that is correctly `/dev/mmcblk0p5`. It is worth
+recording because it failed in the safe direction — a *false alarm* on a good
+image. The same habit of building an expected value by string-splicing, applied
+one step further, is how a check ends up passing on a bad one.
 
 ##### ✅ Decision: a pinned stock image. Not pi-gen, not debootstrap.
 
@@ -993,6 +1048,7 @@ Split by artifact, each independently runnable, sequencer on top — the shape
 | 2 | `image/build-rootfs.sh` | KosmOS rootfs (chroot: kernel + userspace) | ✅ built, run on pi-server |
 | 3 | `image/assemble-image.sh` | A/B `.img` per `layout.sh`, both slots + `slots.conf` | ✅ built, image produced |
 | 4 | `image/build-image.sh` | sequencer → `.img.gz` | · |
+| → | `image/verify-image.sh` | 96 assertions over a finished `.img` | ✅ 96/96 |
 
 - [x] **Stage 1 — fetch and verify the base.** `image/fetch-base.sh`, 172 lines.
   Downloads, verifies, decompresses, prints the `.img` path on stdout; every
@@ -1178,6 +1234,9 @@ Split by artifact, each independently runnable, sequencer on top — the shape
   `-kosmos`" assertion is the backstop if this is ever got wrong again.
 
   **Verified by mounting the finished image, not by trusting the log.**
+  (This describes the first assembly, by hand. That image was later deleted
+  for its 4096 MiB slots; the findings held on the rebuild, and every one of
+  them is now an assertion in `verify-image.sh` rather than a paragraph.)
   Seven partitions matching `layout.sh` exactly; `autoboot.txt` on p1 with slot A
   default and `[tryboot]` naming B; bootfs A holding only `kernel-kosmos.img`
   with `root=/dev/mmcblk0p5`, bootfs B the same with `root=…p6`; both roots
