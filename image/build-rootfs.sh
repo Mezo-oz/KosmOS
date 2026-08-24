@@ -293,6 +293,37 @@ install_satcom() {
 # apt package list, so a --prep-only run produced a manifest claiming packages
 # it had never installed -- a provenance file that lies is worse than none,
 # because it is the thing a later reader trusts instead of checking.
+# Remove this stage's own mess before the rootfs is handed to stage 3.
+#
+# Measured on the first full --with-satcom build, 2026-08-23: the finished
+# rootfs was 6347 MiB, of which 1295 MiB was residue that no running system
+# needs -- 803 MiB of downloaded .debs, 147 MiB of apt package lists, and
+# 345 MiB of source trees left in /tmp by clone_pinned. Every one of those
+# would have been written into BOTH slots by stage 3, so the cost is doubled
+# in the image and doubled again in every update bundle.
+#
+# Deliberately NOT removed here: the stock 6.18.34 module trees (64 MiB).
+# They are dead only because stage 3 removes the stock kernels from each
+# bootfs, and that is stage 3's decision to make. Stage 2 does not get to
+# depend on it.
+clean_rootfs() {
+    step "removing build residue"
+    local before after
+    before=$(sudo du -sm "$ROOTFS" | cut -f1)
+
+    in_chroot "apt-get clean" || die "apt-get clean failed"
+    sudo rm -rf "$ROOTFS/var/lib/apt/lists"
+    sudo mkdir -p "$ROOTFS/var/lib/apt/lists/partial"
+
+    # clone_pinned leaves each source tree in /tmp. /tmp is a scratch directory
+    # on a running system, so emptying it is what the first boot would do
+    # anyway -- just without shipping it to the user first.
+    sudo find "$ROOTFS/tmp" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+
+    after=$(sudo du -sm "$ROOTFS" | cut -f1)
+    note "rootfs $before MiB -> $after MiB (reclaimed $((before - after)) MiB)"
+}
+
 write_manifest() {
     local img="$1" kernel="$2" apt="$3" satcom="$4"
     {
@@ -354,6 +385,7 @@ main() {
     fi
     install_apt_userspace
     [ "$with_satcom" -eq 0 ] || install_satcom
+    clean_rootfs
     chroot_finish
 
     local satcom_state="not run (--with-satcom omitted)"

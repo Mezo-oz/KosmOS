@@ -158,7 +158,28 @@ mkdir -p build && cd build
 # ships it off by default on every platform. Leaving it off also avoids the
 # multiple-Soapy-module conflict upstream's own FAQ warns about — RTL-SDR
 # reaches SDR++ through its native rtl_sdr_source and librtlsdr instead.
-cmake -DCMAKE_BUILD_TYPE=Release -DOPT_BUILD_SOAPY_SOURCE=OFF ..
+#
+# OPT_BUILD_PLUTOSDR_SOURCE=OFF: upstream defaults it ON and it needs libiio,
+# which is not in the dependency list above. That is what broke the first image
+# build (2026-08-23) — CMake configure failed with "Package 'libiio', required
+# by 'virtual:world', not found". The PlutoSDR is an Analog Devices eval board;
+# KosmOS is an RTL-SDR ground station, so the fix is to stop building a driver
+# for hardware the project does not support, not to install libiio and
+# libad9361 into every image for a device nobody has. Same reasoning, and the
+# same remedy, as the Soapy line above.
+#
+# ⚠️ The real finding underneath this is worse than one missing package, and is
+# NOT fixed here. CMake reported finding libairspy, libairspyhf and libhackrf —
+# none of which this script installs. They arrive as transitive dependencies of
+# GNU Radio and SatDump, installed by 03a and 03b just before this runs. So
+# WHICH SDR++ modules end up in the image is decided by what earlier scripts
+# happened to drag in: reorder the stages, or let an upstream bump change
+# SatDump's dependencies, and SDR++ silently gains or loses hardware support
+# with nothing in the build log flagging it. Making the module set explicit —
+# every OPT_BUILD_* named ON or OFF here — is the actual fix. See ROADMAP 4a.
+cmake -DCMAKE_BUILD_TYPE=Release \
+    -DOPT_BUILD_SOAPY_SOURCE=OFF \
+    -DOPT_BUILD_PLUTOSDR_SOURCE=OFF ..
 make -j"$(nproc)"
 
 echo ""

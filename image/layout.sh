@@ -56,7 +56,20 @@ set -euo pipefail
 
 readonly SIZE_AUTOBOOT_MIB=16      # 512 bytes of content; 16 MiB is the floor FAT16 wants
 readonly SIZE_BOOT_MIB=512         # matches Pi OS /boot/firmware, which fits a kernel + DTBs + overlays
-readonly SIZE_ROOT_MIB=4096        # per slot; a Lite-based KosmOS root with SDR userspace
+# Per slot. MEASURED, not guessed — 4096 was a guess and it was wrong.
+#
+# The first full SATCOM build (2026-08-23) produced a rootfs of 6347 MiB, or
+# 5054 MiB once the builder's own residue was removed. That overruns a 4096 MiB
+# slot by 958 MiB, so the previous value could never have held a complete
+# KosmOS image; the assembled image built earlier that day only fit because the
+# SATCOM stack was not in it.
+#
+# 6144 leaves 1090 MiB of headroom at 82% full, and it is also the LARGEST
+# value that still fits a nominal 16 GB card: two 6 GiB roots put the minimum
+# image at 13856 MiB against roughly 15258 MiB usable, whereas 7 GiB roots need
+# 15904 MiB and break 16 GB entirely. So this is not a round number chosen for
+# comfort — it is the last one before a whole class of card stops working.
+readonly SIZE_ROOT_MIB=6144
 readonly ALIGN_MIB=4               # SD/eMMC erase-block friendly alignment
 
 # Partition numbers. These are not cosmetic -- autoboot.txt refers to slots by
@@ -308,7 +321,8 @@ emit_summary() {
         "p${PN_DATA}" "ext4 logical" "$LABEL_DATA" "rest" "persistent data"
     echo
     echo "Minimum image: $(min_image_mib) MiB (with a ${MIN_DATA_MIB} MiB data partition)"
-    echo "Smallest sane card: 16 GB. Recommend 32 GB in the release notes."
+    echo "16 GB card: fits, but leaves only ~1.4 GiB for captures. 32 GB is the"
+    echo "number for the release notes; 16 GB is the floor, not a recommendation."
 }
 
 # ============================================================================

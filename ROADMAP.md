@@ -256,12 +256,19 @@ detection returns the configuration letter on stdout:
 CONFIG=$(./bench-detect-config.sh)      # prints A, B or C; non-zero if unsure
 ```
 
-**Current headroom** (re-measured 2026-08-23, after the slot check):
-`kosmos-health-check.sh` **398**, `tle-updater.sh` **397**,
-`run-latency-bench.sh` **396**, `install-kernel.sh` 383, `rtl-power-heatmap.py`
-**377**, `layout.sh` 367, `run-sdr-bench.sh` 367, `build-rootfs.sh` 352,
-`01-build-kernel.sh` 329, `02c-sdr-userspace.sh` 298, `assemble-image.sh` 286,
-`install-tle-timer.sh` 249, `fetch-base.sh` 172, `slot-identity.sh` 157.
+**Current headroom** (re-measured 2026-08-23, after the first full SATCOM build):
+`build-rootfs.sh` **400 — AT THE CAP**, `kosmos-health-check.sh` **398**,
+`tle-updater.sh` **397**, `run-latency-bench.sh` **396**, `install-kernel.sh`
+383, `layout.sh` 381, `rtl-power-heatmap.py` **377**, `run-sdr-bench.sh` 367,
+`02c-sdr-userspace.sh` 352, `01-build-kernel.sh` 329, `assemble-image.sh` 296,
+`install-tle-timer.sh` 249, `03c-sdrpp.sh` 203, `fetch-base.sh` 172,
+`slot-identity.sh` 157.
+
+⚠️ **Two files now have no room at all.** `build-rootfs.sh` sits at exactly 400
+taking `clean_rootfs`, and `kosmos-health-check.sh` at 398. The rule is ≤400, so
+both are compliant and neither can take another line. **The next addition to
+either must extract**, and unlike the last time this came up there is no
+duplicated prose left in them to reclaim — the honest fat has already been cut.
 
 ### ✅ The rule fired again, 2026-08-23 — and this time it was resisted first
 
@@ -1069,6 +1076,46 @@ Split by artifact, each independently runnable, sequencer on top — the shape
   `unable to resolve host` warning, since the chroot has no entry for the build
   host's name — cosmetic, and deliberately not "fixed" by writing pi-server's
   hostname into an image that ships to other people).
+
+  ✅ **The SATCOM stack has now executed, end to end, for the first time.**
+  `02c` complete (librtlsdr, rtl_433, dump1090, predict), `03a` GNU Radio
+  3.10.12.0, `03b` SatDump, `03c` SDR++. Every binary present in the rootfs and
+  `from gnuradio import gr` works inside it. The project's longest-standing
+  liability — "written and linted but never run" — is closed for `userspace/`.
+
+  **Two more never-executed assumptions surfaced, both fixed:**
+  - **`predict` ships an interactive ncurses installer**, not a `make install`
+    target. It clears the screen and blocks on a licence Y/N, so it can never
+    run unattended: the first build died on `Error opening terminal: unknown`.
+    Reproduced faithfully instead — read `.version`, write `predict.h`, compile,
+    install — with the deliberate difference that the tree goes to
+    `/usr/local/share/predict` rather than the installer's habit of symlinking
+    into the build directory and baking that path into the binary.
+  - **SDR++ failed CMake on a missing `libiio`**, required by its PlutoSDR
+    module, which upstream defaults ON and `03c` never declared. Disabled the
+    module rather than installing `libiio`/`libad9361` into every image for an
+    ADI eval board a ground station will never have — the same remedy the file
+    already applies to Soapy.
+
+  ⚠️ **And one defect found but NOT fixed, which is worse than either.** CMake
+  reported finding `libairspy`, `libairspyhf` and `libhackrf` — none of which
+  `03c` installs. They arrive as transitive dependencies of GNU Radio and
+  SatDump, installed by `03a`/`03b` moments earlier. **So which SDR++ modules
+  end up in the image is decided by what earlier scripts happened to drag in.**
+  Reorder the stages, or let an upstream bump change SatDump's dependencies, and
+  SDR++ silently gains or loses hardware support with nothing in the log saying
+  so. Note that a lock file recording installed *packages* would not catch this
+  either: the variance is in which code paths were **compiled**, not which
+  packages were installed. The fix is to name every `OPT_BUILD_*` explicitly ON
+  or OFF; it is flagged in `03c-sdrpp.sh` so it cannot be lost.
+
+  **Stage 2 now removes its own residue** (`clean_rootfs`). Measured: 1293 MiB
+  of the finished rootfs was build leavings — 803 MiB of downloaded `.deb`s,
+  147 MiB of apt lists, and 345 MiB of source trees `clone_pinned` leaves in
+  `/tmp`. All of it would have been written into **both** slots by stage 3 and
+  into every update bundle. The stock `6.18.34` module trees (64 MiB) are
+  deliberately left: they are dead only because stage 3 removes the stock
+  kernels, and stage 2 does not get to depend on stage 3's decision.
 - [x] **Stage 3 — assemble the A/B image.** `image/assemble-image.sh`, 286
   lines. **The first KosmOS image exists**, built on pi-server in 7m54s:
   9760 MiB apparent, 4.7 GB on disk because it stays sparse.
@@ -1134,6 +1181,34 @@ free; the base costs ~3.5 GB and the assembled image ~9.5 GB. That fits, with
 little room for a second copy or an uncompressed intermediate. Stage 3 should
 write the image once rather than build-then-copy, and the figure gets re-checked
 before stage 3 runs rather than after it fails.
+
+##### ✅ Root slot size — measured 2026-08-23, and 4096 MiB was wrong
+
+The number was guessed when the layout was written and the guess did not
+survive contact with a real build.
+
+| | MiB |
+|---|---|
+| Full SATCOM rootfs, as built | 6347 |
+| Same, after removing build residue | **5054** |
+| Old slot size | 4096 → **over by 958** |
+| New slot size | 6144 → fits, 1090 MiB spare, 82% full |
+
+`layout.sh` now carries `SIZE_ROOT_MIB=6144`. That figure is not a round number
+picked for comfort: **it is the largest value that still fits a nominal 16 GB
+card.** Two 6 GiB roots put the minimum image at 13856 MiB against roughly
+15258 MiB usable; 7 GiB roots need 15904 MiB and break 16 GB outright. So 6 GiB
+is the last size before a whole class of card stops working, which is a better
+reason to stop there than "it looked like enough."
+
+Consequence worth stating plainly: **a 16 GB card now leaves only ~1.4 GiB for
+captures.** It is the floor, not a recommendation, and `layout.sh summary` says
+so rather than implying 16 GB is fine. 32 GB is the release-note number.
+
+⚠️ **This invalidates the image assembled earlier the same day.** It was built
+with 4096 MiB slots and without the SATCOM stack — it only "fit" because the
+thing that does not fit was missing. It has been deleted rather than left
+lying around looking like a KosmOS image.
 
 - [ ] **Original bullets, kept for the record**
   - Takes a fresh Pi OS Lite image → applies kernel → installs all tools
