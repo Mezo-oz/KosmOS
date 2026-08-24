@@ -49,6 +49,11 @@ MANIFEST="$CACHE/rootfs.manifest"
 # where someone will first notice.
 TARGET_DEV="${KOSMOS_TARGET_DEV:-/dev/mmcblk0}"
 
+# First-boot login. Empty means the image ships unloginable, which is the base
+# image's own behaviour and is announced loudly rather than silently shipped.
+AUTHORIZED_KEYS=""
+LOGIN_USER="${KOSMOS_LOGIN_USER:-kosmos}"
+
 MOUNTED=()
 LOOPDEV=""
 MNT="$CACHE/mnt-image"
@@ -104,15 +109,32 @@ preflight() {
 # Create the file and partition it. truncate makes it sparse, so this costs
 # nothing until filesystems are written into it.
 create_image() {
-    local img="$1" bytes
+    local img="$1" bytes bytes_mib
     bytes=$(layout min-bytes)
-    step "creating $((bytes / 1024 / 1024)) MiB image at $img"
+    bytes_mib=$(( bytes / 1024 / 1024 ))
+    step "creating ${bytes_mib} MiB image at $img"
 
-    local avail_mb
+    # Check against what will actually be WRITTEN, not the apparent size.
+    #
+    # The image is sparse: `truncate` allocates nothing, and only the bytes the
+    # filesystems occupy ever hit the disk. Comparing free space to the apparent
+    # size therefore refuses builds that would comfortably succeed — with 6 GiB
+    # slots the apparent size is 13856 MiB while the real cost is about
+    # 2x rootfs + 2x bootfs, and the first 6 GiB build had 12.8 GiB free and was
+    # blocked by a check that was wrong rather than careful.
+    #
+    # A precheck that fires on builds that would work is not a safety feature;
+    # it just teaches people to delete it.
+    local avail_mb rootfs_mb bootfs_mb need_mb
     avail_mb=$(df -Pm "$(dirname "$img")" | awk 'NR==2 {print $4}')
-    local need_mb=$(( bytes / 1024 / 1024 + 256 ))
+    rootfs_mb=$(sudo du -sxm "$ROOTFS" 2>/dev/null | cut -f1 || echo 0)
+    bootfs_mb=$(sudo du -sxm "$BOOTFS" 2>/dev/null | cut -f1 || echo 0)
+    # Both slots, plus a GiB for the data partition, filesystem overhead and
+    # the metadata mkfs writes into otherwise-empty partitions.
+    need_mb=$(( 2 * rootfs_mb + 2 * bootfs_mb + 1024 ))
+    note "will write ~${need_mb} MiB into a ${bytes_mib} MiB sparse image; ${avail_mb} MiB free"
     [ "${avail_mb:-0}" -ge "$need_mb" ] ||
-        die "need ${need_mb} MB free, have ${avail_mb} MB"
+        die "need ~${need_mb} MB free, have ${avail_mb} MB"
 
     rm -f "$img"
     truncate -s "$bytes" "$img"
@@ -200,7 +222,7 @@ populate_bootfs() {
 # check reads. Written twice, once per slot, deliberately.
 populate_root() {
     local slot="$1" part="$2"
-    step "populating root $slot (p$part) — about 2.2 GB"
+    step "populating root $slot (p$part) — $(sudo du -sxm "$ROOTFS" 2>/dev/null | cut -f1 || echo "?") MiB"
     mount_into "${LOOPDEV}p${part}" "$MNT/root$slot"
     sudo rsync -aHAX --numeric-ids "$ROOTFS/" "$MNT/root$slot/"
 
@@ -211,10 +233,75 @@ populate_root() {
 
     # The health check and its helper ship inside the image; without them the
     # slot cannot report itself healthy and no update could ever be committed.
+    if [ -n "$AUTHORIZED_KEYS" ]; then
+        provision_access "$MNT/root$slot" "$LOGIN_USER" "$AUTHORIZED_KEYS"
+    fi
+
     sudo mkdir -p "$MNT/root$slot/usr/local/lib/kosmos"
     sudo install -m 0755 "$SELF_DIR/health-check/kosmos-health-check.sh" \
         "$SELF_DIR/health-check/slot-identity.sh" \
         "$MNT/root$slot/usr/local/lib/kosmos/"
+}
+
+# Turn the base image's placeholder account into a usable, key-only login.
+#
+# WITHOUT THIS THE IMAGE BOOTS TO A PROMPT NOBODY CAN ANSWER. Verified in the
+# base: `pi` exists at uid 1000 but its password is LOCKED and its shell is
+# /usr/sbin/nologin. It is a placeholder that userconfig.service is meant to
+# rename at first boot after reading /boot/firmware/userconf.txt. A headless
+# appliance shipped without that file therefore has no way in at all -- not by
+# console, not by SSH.
+#
+# Done at build time rather than through userconf.txt because the first-boot
+# path depends on service ordering and on files that sshswitch and userconf
+# DELETE as they consume them. Provisioning here is deterministic and can be
+# inspected in the finished image instead of hoped for on first boot.
+#
+# Three things that had to be checked rather than assumed, each of which would
+# have produced a broken account:
+#   - the shell is nologin, so a key alone would not get a session;
+#     `usermod -s /bin/bash` is what userconf does and is required here too
+#   - the base ships NO /etc/sudoers.d/010_pi-nopasswd, so userconf's sed that
+#     patches it is a no-op on Lite. `pi` IS in the sudo group, but the password
+#     is locked, so sudo would prompt for a credential that cannot exist. An
+#     explicit NOPASSWD drop-in is therefore mandatory, not a convenience.
+#   - renaming must be idempotent: stage 3 runs this once per slot, and a second
+#     pass finds no `pi` to rename.
+provision_access() {
+    local root="$1" user="$2" keyfile="$3"
+
+    if sudo chroot "$root" getent passwd pi > /dev/null 2>&1; then
+        sudo chroot "$root" usermod -l "$user" pi
+        sudo chroot "$root" usermod -m -d "/home/$user" "$user"
+        sudo chroot "$root" groupmod -n "$user" pi
+    fi
+    sudo chroot "$root" usermod -s /bin/bash "$user"
+
+    sudo install -d -m 0700 -o 1000 -g 1000 "$root/home/$user/.ssh"
+    sudo install -m 0600 -o 1000 -g 1000 "$keyfile" \
+        "$root/home/$user/.ssh/authorized_keys"
+
+    printf '%s ALL=(ALL) NOPASSWD: ALL\n' "$user" |
+        sudo tee "$root/etc/sudoers.d/010-kosmos-nopasswd" > /dev/null
+    sudo chmod 0440 "$root/etc/sudoers.d/010-kosmos-nopasswd"
+
+    # The account is provisioned, so the first-boot renamer has nothing to do
+    # and would only sit waiting on a console for a userconf.txt that is not
+    # coming. Remove the enable symlink directly: no systemctl, no dbus, and
+    # the result is visible in the image rather than deferred to boot.
+    sudo rm -f "$root/etc/systemd/system/multi-user.target.wants/userconfig.service"
+
+    # Enable sshd outright rather than leaving it to sshswitch's /boot marker.
+    # The marker works, but it is opt-in and self-deleting; an appliance whose
+    # only access path is SSH should not ship with SSH off by default.
+    sudo ln -sf /lib/systemd/system/ssh.service \
+        "$root/etc/systemd/system/multi-user.target.wants/ssh.service"
+
+    # Key-only, stated explicitly rather than relying on the locked password to
+    # make password auth fail in practice.
+    sudo mkdir -p "$root/etc/ssh/sshd_config.d"
+    printf 'PasswordAuthentication no\nPermitRootLogin no\n' |
+        sudo tee "$root/etc/ssh/sshd_config.d/10-kosmos.conf" > /dev/null
 }
 
 # The data partition is shared by both slots and survives every update. Seeded
@@ -262,12 +349,17 @@ main() {
         case "$1" in
             --kernel) [ $# -ge 2 ] || die "--kernel needs a path"; kernel_tarball="$2"; shift 2 ;;
             --out)    [ $# -ge 2 ] || die "--out needs a path"; out="$2"; shift 2 ;;
+            --authorized-keys)
+                      [ $# -ge 2 ] || die "--authorized-keys needs a path"
+                      AUTHORIZED_KEYS="$2"; shift 2 ;;
             -h|--help) sed -n '7,11p' "$SELF_DIR/assemble-image.sh" | sed 's/^# \{0,2\}//'; return 0 ;;
             *) die "unknown argument '$1' (try --help)" ;;
         esac
     done
     [ -z "$kernel_tarball" ] || [ -f "$kernel_tarball" ] ||
         die "no such kernel package: $kernel_tarball"
+    [ -z "$AUTHORIZED_KEYS" ] || [ -s "$AUTHORIZED_KEYS" ] ||
+        die "authorized_keys file is missing or empty: $AUTHORIZED_KEYS"
 
     preflight
 
@@ -290,6 +382,11 @@ main() {
     [ ! -f "$MANIFEST" ] || sudo cp "$MANIFEST" "${img}.manifest"
     step "image ready: $img"
     [ -n "$kernel_boot" ] || note "WARNING: no kernel placed — this image will not boot KosmOS"
+    if [ -n "$AUTHORIZED_KEYS" ]; then
+        note "login: $LOGIN_USER, key-only, sshd enabled"
+    else
+        note "WARNING: no --authorized-keys — this image has NO way to log in"
+    fi
     echo "$img"
 }
 

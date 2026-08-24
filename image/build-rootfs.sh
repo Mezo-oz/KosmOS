@@ -262,16 +262,10 @@ install_apt_userspace() {
         die "apt-get install failed in chroot"
 }
 
-# The WHOLE userspace directory goes in, not just the two entry points.
-# 03-satcom-stack.sh is a sequencer that resolves 03a/03b/03c from its own
-# $SELF_DIR, so copying it alone puts it in a directory where its jobs do not
-# exist and it dies on the first one.
-#
-# KOSMOS_ASSUME_YES=1 is mandatory here, not a convenience. Each of these
-# scripts prompts, and in a chroot with no tty `read` gets EOF, the answer
-# defaults to no, and the script exits 3 -- which the sequencer treats as a
-# deliberate decline and reports as SKIPPED. Without the flag this function
-# would return success having installed nothing at all.
+# The WHOLE userspace directory goes in: 03-satcom-stack.sh resolves 03a/03b/03c
+# from its own $SELF_DIR. KOSMOS_ASSUME_YES=1 is mandatory, not a convenience --
+# without it every script's prompt reads EOF, exits 3, and the sequencer reports
+# SKIPPED, so this function would succeed having installed nothing. ROADMAP 4a.
 install_satcom() {
     step "building the SATCOM stack from source (hours, not minutes)"
     local dst="$ROOTFS/tmp/kosmos-userspace"
@@ -306,10 +300,15 @@ install_satcom() {
 # They are dead only because stage 3 removes the stock kernels from each
 # bootfs, and that is stage 3's decision to make. Stage 2 does not get to
 # depend on it.
+# The -x is load-bearing: this runs BEFORE chroot_finish, so /dev, /proc and
+# /sys are still bind-mounted inside $ROOTFS. Without it du descends into them,
+# exits non-zero, and `set -e` kills the script silently on a failing command
+# substitution -- which is how a two-hour build died on its last step. See
+# ROADMAP 4a.
 clean_rootfs() {
     step "removing build residue"
     local before after
-    before=$(sudo du -sm "$ROOTFS" | cut -f1)
+    before=$(sudo du -sxm "$ROOTFS" 2>/dev/null | cut -f1 || echo 0)
 
     in_chroot "apt-get clean" || die "apt-get clean failed"
     sudo rm -rf "$ROOTFS/var/lib/apt/lists"
@@ -320,7 +319,7 @@ clean_rootfs() {
     # anyway -- just without shipping it to the user first.
     sudo find "$ROOTFS/tmp" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 
-    after=$(sudo du -sm "$ROOTFS" | cut -f1)
+    after=$(sudo du -sxm "$ROOTFS" 2>/dev/null | cut -f1 || echo 0)
     note "rootfs $before MiB -> $after MiB (reclaimed $((before - after)) MiB)"
 }
 
