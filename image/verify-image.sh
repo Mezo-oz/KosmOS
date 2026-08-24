@@ -8,6 +8,14 @@
 #
 #   ./verify-image.sh                  verify the image in the build cache
 #   ./verify-image.sh <path.img>       verify a specific image
+#   ./verify-image.sh --release <img>  also assert what only a RELEASE must hold
+#
+# --release exists because one assertion is a defect in a release artifact and
+# a correct state in stage 3's output: the stock module trees. Stage 2 leaves
+# them because it does not get to depend on stage 3 deleting the stock kernels,
+# and stage 4 removes them. Making that a plain check would print FAIL against
+# a good stage-3 image, and a check that cries wolf on correct output is how a
+# team learns to skim past output.
 #
 # WHY THIS IS A SCRIPT AND NOT A CHECKLIST. Stage 3 prints a log full of
 # reassuring "==> populating root B" lines and exits 0. Every defect this phase
@@ -36,6 +44,8 @@ set -euo pipefail
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LAYOUT="$SELF_DIR/layout.sh"
 CACHE="${KOSMOS_BUILD_CACHE:-/var/tmp/kosmos-build}"
+RELEASE=0
+if [ "${1:-}" = "--release" ]; then RELEASE=1; shift; fi
 IMG="${1:-$CACHE/kosmos-rpi5.img}"
 TARGET_DEV="${KOSMOS_TARGET_DEV:-/dev/mmcblk0}"
 LOGIN_USER="${KOSMOS_LOGIN_USER:-kosmos}"
@@ -223,6 +233,19 @@ verify_root() {
     check "health check installed" sudo test -x "$dir/usr/local/lib/kosmos/kosmos-health-check.sh"
     check "slot-identity installed" sudo test -x "$dir/usr/local/lib/kosmos/slot-identity.sh"
 
+    # RELEASE ONLY. A module tree whose kernel is not in this slot's bootfs can
+    # never be loaded by anything -- stage 3 deleted the stock kernels, so the
+    # stock modules became 64 MiB of cargo in every slot and every future update
+    # bundle. Counted against the manifest rather than against a literal
+    # "6.18.34", which would stop matching the day the base image is bumped and
+    # silently start passing.
+    if [ "$RELEASE" -eq 1 ]; then
+        local orphans
+        orphans="$(sudo find "$dir/lib/modules" -mindepth 1 -maxdepth 1 -type d \
+            -not -name "$kver" -printf '%f ' 2>/dev/null || true)"
+        check_eq "no orphan module trees" "" "$orphans"
+    fi
+
     # Named by absolute path inside the mount, never through command -v: the
     # build host has every one of these installed, so a PATH lookup here would
     # pass on an image containing none of them.
@@ -309,7 +332,9 @@ main() {
 
     echo
     if [ "$FAIL" -eq 0 ]; then
-        echo "PASS — $PASS checks, no failures. Structural only: this image has not been booted."
+        local mode="structural"
+        [ "$RELEASE" -eq 0 ] || mode="structural + release"
+        echo "PASS — $PASS $mode checks, no failures. This image has not been booted."
         return 0
     fi
     echo "FAIL — $FAIL of $((PASS + FAIL)) checks failed."

@@ -256,14 +256,15 @@ detection returns the configuration letter on stdout:
 CONFIG=$(./bench-detect-config.sh)      # prints A, B or C; non-zero if unsure
 ```
 
-**Current headroom** (re-measured 2026-08-24, after `verify-image.sh`):
+**Current headroom** (re-measured 2026-08-24, after stage 4):
 `build-rootfs.sh` **399**, `kosmos-health-check.sh` **398**, `tle-updater.sh`
 **397**, `run-latency-bench.sh` **396**, `assemble-image.sh` **393**,
 `install-kernel.sh` 383, `layout.sh` 381, `rtl-power-heatmap.py` **377**,
-`run-sdr-bench.sh` 367, `02c-sdr-userspace.sh` 352, `01-build-kernel.sh` 329,
-`verify-image.sh` 319, `install-tle-timer.sh` 249, `03a-gnuradio-stack.sh` 227,
-`thermal-state.sh` 207, `03b-satdump.sh` 206, `03c-sdrpp.sh` 203,
-`02a-verify-kernel.sh` 198, `fetch-base.sh` 172, `slot-identity.sh` 157.
+`run-sdr-bench.sh` 367, `02c-sdr-userspace.sh` 352, `verify-image.sh` 344,
+`01-build-kernel.sh` 329, `build-image.sh` 274, `install-tle-timer.sh` 249,
+`03a-gnuradio-stack.sh` 227, `thermal-state.sh` 207, `03b-satdump.sh` 206,
+`03c-sdrpp.sh` 203, `02a-verify-kernel.sh` 198, `fetch-base.sh` 172,
+`slot-identity.sh` 157.
 
 ⚠️ **Five files now have under ten lines of room.** The two flagged on
 2026-08-23 have been joined by `assemble-image.sh`, which took **97 lines** for
@@ -275,10 +276,11 @@ The rule is 400, so all five are compliant and none of them can take a feature.
 **The next addition to any of them must extract**, and unlike the last time this
 came up there is no duplicated prose left to reclaim — the honest fat is cut.
 
-`verify-image.sh` was written against this at 319: its per-slot checks are three
-functions (`verify_boot`, `verify_root`, `verify_access`) rather than one, which
-is what keeps every function inside the 60-line rule and leaves the file room to
-grow a section when 4b adds one.
+Both new files were written against this. `verify-image.sh` splits its per-slot
+checks into three functions (`verify_boot`, `verify_root`, `verify_access`)
+rather than one, which is what keeps every function inside the 60-line rule and
+leaves room to grow a section when 4b adds one; it has since taken `--release`
+and sits at 344.
 
 ### ✅ The rule fired again, 2026-08-23 — and this time it was resisted first
 
@@ -914,31 +916,37 @@ appliance. Phases 1–2 build the parts; Phase 3 makes them run themselves.*
 
 #### 4a. Image Building
 
-**⏳ Started 2026-08-23.** The base-image question 4d deferred here is decided,
-and stages 1–3 are built and have run on hardware.
+**⏳ Started 2026-08-23. Code-complete 2026-08-24.** The base-image question 4d
+deferred here is decided, all four stages are built and have run on hardware,
+and the release artifact exists. What is left is a boot test, which needs
+hardware this box does not have.
 
 ##### 📌 PICK UP HERE — paused 2026-08-24
 
-**State:** the image built on 2026-08-23 has now been **inspected rather than
-trusted**. `image/verify-image.sh` mounts it read-only and asserts 96 things
-about it against `layout.sh`; all 96 hold. Stages 1–3 are built, run, and their
-product is checked. Stage 4 is the only stage left, and it is the last thing
-between here and a release artifact.
+**State: 4a is code-complete.** All four stages are built and have run; the
+image is slimmed, verified at **98 of 98** structural + release checks, and a
+**3.57 GB `kosmos-rpi5.img.gz`** has been streamed off pi-server and had its
+round trip confirmed against the digest recorded before compression.
 
-**Next: flashing, which still cannot be done from here.** pi-server has exactly
-one block device — the card it runs from — so there is nowhere to write.
-Flashing needs a card reader on another machine and a spare card. **Keep
-pi-server intact until the new card is proven**; it is the only route back, and
-the image has still never booted.
+**Everything left in 4a needs hands, not code.** The image has never booted.
+The protocol is written down below — *The boot test — protocol* — and it
+needs a card reader on another machine and a spare card. **Keep pi-server's
+card intact until the new one is proven**; it is the only route back.
+
+Artifact and its digests are off-box, outside the repo, at
+`X:\kosmos-images\`. The raw-image digest is
+`b1c4c74c0d53c2d31003457353abb45678e2926a602b6ff475fb73c53edbbe4f`.
 
 **Known-open, in the order they will bite:**
-1. The image has never booted. Everything verified so far is structural, and
-   `verify-image.sh` says so in its own header and in its passing output.
+1. The image has never booted. Everything either script can tell you is
+   structural, and both say so in their own passing output.
 2. SDR++'s module set is decided by what earlier stages drag in — see the
-   ⚠️ under stage 2. Not fixed.
+   ⚠️ under stage 2. Not fixed, and a lock file would not catch it.
 3. `root=` is a device path, so the image is card-specific (no NVMe).
-4. Stock `6.18.34` module trees are dead weight in both slots (64 MiB each).
-5. `rauc/rauc#1599` — re-check before writing any custom backend.
+4. `rauc/rauc#1599` — re-check before writing any custom backend.
+
+*(Known-open 4 of the previous list, the stock module trees, is closed: stage 4
+removes them and `verify-image.sh --release` asserts it.)*
 
 ##### ✅ Stage 3's product is verified — 96 checks, 2026-08-24
 
@@ -1047,7 +1055,7 @@ Split by artifact, each independently runnable, sequencer on top — the shape
 | 1 | `image/fetch-base.sh` | verified stock `.img` | ✅ built, run on pi-server |
 | 2 | `image/build-rootfs.sh` | KosmOS rootfs (chroot: kernel + userspace) | ✅ built, run on pi-server |
 | 3 | `image/assemble-image.sh` | A/B `.img` per `layout.sh`, both slots + `slots.conf` | ✅ built, image produced |
-| 4 | `image/build-image.sh` | sequencer → `.img.gz` | · |
+| 4 | `image/build-image.sh` | sequencer → `.img.gz` on stdout | ✅ built, 3.6 GB streamed |
 | → | `image/verify-image.sh` | 96 assertions over a finished `.img` | ✅ 96/96 |
 
 - [x] **Stage 1 — fetch and verify the base.** `image/fetch-base.sh`, 172 lines.
@@ -1211,6 +1219,13 @@ Split by artifact, each independently runnable, sequencer on top — the shape
   lines. **The first KosmOS image exists**, built on pi-server in 7m54s:
   9760 MiB apparent, 4.7 GB on disk because it stays sparse.
 
+  ⚠️ **Those two figures are the pre-SATCOM build's** and are kept only to
+  date them. The image that exists now is **14 GB apparent and 11 GB on disk**,
+  measured 2026-08-24 — the stack that did not fit in a 4096 MiB slot does not
+  compress into 4.7 GB either. Stage 4 had to be designed around the real
+  number, and a stale one sitting in this document is how it would not have
+  been.
+
   **It contains no partition numbers, sizes or offsets of its own.** Every one
   comes from `layout.sh` — `sfdisk`, `autoboot`, `cmdline`, `fstab`, `slotmap`,
   `min-bytes`. This is the consumer that file was written for, and `fstab` was
@@ -1268,7 +1283,91 @@ Split by artifact, each independently runnable, sequencer on top — the shape
 
   Not verified, and cannot be from here: **that the image actually boots.** It
   has never been flashed. Everything above is structural.
-- [ ] **Stage 4 — sequencer, compression, release artifact.**
+- [x] **Stage 4 — sequencer, slimming, digest, release artifact.**
+  `image/build-image.sh`, 274 lines. Sequences stages 1–3 (skipping any whose
+  product exists, because rebuilding a two-hour rootfs to change a compression
+  flag is how a sequencer becomes something nobody runs), removes the orphan
+  module trees, records a digest, verifies, and hands over the image.
+
+  **The compressed image goes to stdout and is never written on the build
+  host.** That is a disk decision before it is a design one: the image is 11 GB
+  on disk and pi-server has 2.2 GB free, so there is nowhere to put a `.img.gz`
+  beside it. Compressing in place would mean deleting the 5 GB rootfs cache
+  first — and that cache is the difference between a failed boot test costing
+  minutes and costing two hours, at exactly the moment first boots fail most.
+
+  ```
+  ssh pi-server 'kosmos-img/build-image.sh --stream' > kosmos-rpi5.img.gz
+  ```
+
+  The image has to leave the box anyway, since nothing here can flash it. So
+  streaming makes the move and the compression one pass rather than compressing
+  locally and then transferring the result. **gzip, not xz or zstd**, for a
+  reason that outranks ratio: Raspberry Pi Imager reads `.img.gz` directly, so
+  flashing stays "select the file" instead of "decompress 11 GB somewhere
+  first". `pigz` when present — four cores, and it is minutes.
+
+  **Slimming.** The stock `6.18.34` module trees — flagged under stage 3 as
+  dead weight — are gone: **two** trees per slot, not one (`-rpi-v8` and
+  `-rpi-2712`), 64 MiB per slot, 128 MiB total. Orphan is defined against the
+  manifest's kernel, never against a literal `6.18.34`, which would keep
+  matching after a base bump and quietly stop deleting anything.
+
+  **Run 2026-08-24.** `--slim-image` over the existing image, then a stream:
+  7m28s wall for 14 GB apparent — **3.57 GB** `.img.gz`. Round trip checked
+  rather than assumed: `gzip -dc | sha256sum` on the receiving box returns
+  `b1c4c74c…`, the digest recorded on pi-server before compression. Also
+  incidentally settles the PowerShell binary-stdout trap for this route: Git
+  Bash redirection is byte-exact.
+
+  ✅ **Two defects found by running it, both mine, both caught before shipping.**
+
+  1. **The path was printed on stdout after the gzip stream.** `finish()` now
+     sends it to stderr under `--stream`. Worth stating why it survived a read:
+     gzip **ignores trailing junk**, so the `.gz` still decompresses and still
+     flashes. The corruption is invisible to every check except a byte
+     comparison — which is precisely the check the digest exists to be.
+  2. **Mounting ext4 read-write changes the image even when no file changes.**
+     Two consecutive `--slim-image` runs, the second removing nothing, produced
+     two different sha256 digests: the superblock's mount count and last-mount
+     time are written at mount, the journal closed at umount. For most build
+     scripts a curiosity; here the digest is the artifact's identity and the
+     thing the far end checks, so re-running stage 4 would silently invalidate
+     a hash already published beside a download. `scan_orphans()` now looks with
+     a read-only loop device first and the write pass is skipped entirely when
+     there is nothing to remove. Confirmed: a second run now reports *none
+     found — leaving the image byte-identical* and re-hashes to the same value.
+
+  **`verify-image.sh --release`** carries the assertion behind the slimming: no
+  module tree in a slot whose kernel is not in that slot's bootfs. It is a flag
+  and not a plain check because the same state is *correct* in stage 3's output
+  — stage 2 leaves those trees deliberately, not being entitled to depend on
+  stage 3 removing the stock kernels. A check that prints FAIL against correct
+  output is how a team learns to skim past output. Falsified before trusted, as
+  ever: it failed 2 of 98 on the unslimmed image, naming both trees, and passes
+  98 of 98 now.
+
+##### The boot test — protocol, decided 2026-08-24
+
+Human hands required; nothing here can flash. **Venue: pi-server's own Pi with
+its proven card physically removed.** altai is never a test venue (production
+Tor bridge, the 2026-08-05 rule). A third Pi 5 is strictly better if one exists
+— use it and skip the downtime.
+
+The invariant: **the proven card is never inserted in anything that can write
+while the test runs.** Worst case under this protocol is downtime, never data
+loss.
+
+1. Flash the spare card from `kosmos-rpi5.img.gz` (Imager, "Use custom").
+   Confirming the target device is the one irreversible step — verify it twice.
+2. Clean shutdown of pi-server. Pull its card; it sits on the desk as the
+   rollback state.
+3. Boot the spare. Run the acceptance checks: `uname -r` reports
+   `6.12.98-kosmos+`, `slot-identity.sh` agrees booted-bootfs with mounted-root,
+   `kosmos-health-check.sh` passes, sshd answers on the key.
+4. Shut down, restore the original card, confirm pi-server is back **regardless
+   of pass or fail**. Results get acted on from a healthy box, not a broken one.
+
 
 ⚠️ **Disk on the build host is the tight constraint.** pi-server has ~18 GB
 free; the base costs ~3.5 GB and the assembled image ~9.5 GB. That fits, with
