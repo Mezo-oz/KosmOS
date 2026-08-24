@@ -905,7 +905,42 @@ appliance. Phases 1–2 build the parts; Phase 3 makes them run themselves.*
 #### 4a. Image Building
 
 **⏳ Started 2026-08-23.** The base-image question 4d deferred here is decided,
-and stage 1 is built and run on hardware.
+and stages 1–3 are built and have run on hardware.
+
+##### 📌 PICK UP HERE — paused 2026-08-23, end of session
+
+**State:** all four builder stages exist and have run. The SATCOM stack has
+executed end to end for the first time. The root slot was measured and resized
+4096 → 6144 MiB. Everything is committed and pushed; CI green.
+
+**In flight when the session ended:** `assemble-image.sh` was running on
+pi-server, building the first image with the 6 GiB layout, the KosmOS kernel,
+**and** first-boot access provisioning. It was on `populate root B` — the last
+large copy — with `seed_data` after it, so it will have finished on its own.
+Log: `/var/tmp/kosmos-clean-build.log` and `/var/tmp/kosmos-assemble.log`;
+image at `/var/tmp/kosmos-build/kosmos-rpi5.img`.
+
+**First thing to do next session — verify, do not assume.** The image was never
+inspected after this run. Mount it and check, in both slots: the `kosmos` user
+exists with `/bin/bash` and uid 1000; `~/.ssh/authorized_keys` has the two keys,
+mode 0600; `/etc/sudoers.d/010-kosmos-nopasswd` exists at 0440;
+`multi-user.target.wants/` contains `ssh.service` and **not**
+`userconfig.service`; `sshd_config.d/10-kosmos.conf` is present; and the
+partition table matches `layout.sh` at 6144 MiB slots.
+
+**Then: flashing, which could not be done from here.** pi-server has exactly one
+block device — the card it runs from — so there is nowhere to write. Flashing
+needs a card reader on another machine and a spare card. **Keep pi-server intact
+until the new card is proven**; it is the only route back, and the image has
+still never booted.
+
+**Known-open, in the order they will bite:**
+1. The image has never booted. Everything verified so far is structural.
+2. SDR++'s module set is decided by what earlier stages drag in — see the
+   ⚠️ under stage 2. Not fixed.
+3. `root=` is a device path, so the image is card-specific (no NVMe).
+4. Stock `6.18.34` module trees are dead weight in both slots (64 MiB each).
+5. `rauc/rauc#1599` — re-check before writing any custom backend.
 
 ##### ✅ Decision: a pinned stock image. Not pi-gen, not debootstrap.
 
