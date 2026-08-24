@@ -19,7 +19,7 @@
 # between a failed boot test costing minutes and costing two hours, at exactly
 # the moment first boots are most likely to fail.
 #
-#   ssh pi-server 'kosmos-image/build-image.sh --stream' > kosmos-rpi5.img.gz
+#   ssh pi-server 'kosmos-img/build-image.sh --stream' > kosmos-rpi5.img.gz
 #
 # The image has to leave this box anyway: nothing here can flash it (one block
 # device, the card it runs from), so the card is written from another machine.

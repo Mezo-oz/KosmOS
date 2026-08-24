@@ -142,6 +142,7 @@ shell/Python:
 6. **Smallest scope** — `local` inside functions, globals only when
    deliberate and named LIKE_THIS (rule 6)
 7. **Pin every version, checksum every download** — Pillar 3's mechanics
+8. **stdout is the product; everything else goes to stderr** — see below
 
 ### ⚠️ Standard 3 has a sharp edge: never pipe into `grep -q` (found 2026-08-23)
 
@@ -187,6 +188,38 @@ Not every `| grep -q` in the tree is affected, and they were checked
 individually rather than swept: `echo "$x" | grep -q` and `uname -v | grep -q`
 are safe, because the output fits in the pipe buffer and the producer finishes
 before `grep` can exit.
+
+### ⚠️ Standard 8: stdout is the product (adopted 2026-08-24)
+
+Scripts here already treat stdout as a return channel rather than a place to
+talk: `layout.sh` prints an sfdisk script, `fetch-base.sh` prints the `.img`
+path, the health-check helpers return data for their caller to judge, and every
+`step`/`note`/`die` in the image builders writes to stderr. That was a house
+habit. It is now a rule, because stage 4 showed what it costs when it slips.
+
+`build-image.sh --stream` writes a **gzip stream** to stdout. It also printed
+the image path there when it finished, the way `fetch-base.sh` does — and that
+appended a trailing `/var/tmp/kosmos-build/kosmos-rpi5.img` and a newline to
+the compressed artifact.
+
+What makes it worth a numbered rule rather than a bug fix is the failure mode.
+**gzip ignores trailing junk.** The `.gz` still decompressed. It would still
+have flashed. Nothing in the build, the transfer or the flasher would have said
+a word; only a byte-for-byte comparison catches it, which is why the digest is
+taken of the raw image *before* compression and checked after decompression on
+the far side. A corrupt artifact that passes every check but one is worse than
+one that fails loudly, and this one passed every check but the last.
+
+The rule, stated so it can be applied without re-deriving it:
+
+- If a script's stdout can ever carry bytes a machine consumes — an archive, an
+  image, a generated config, a digest — then **every** human-facing line in it
+  goes to stderr, including the ones that only appear on success.
+- A script that prints a path on stdout as its return value is doing the same
+  thing correctly. The two are the same rule, not opposites: stdout carries one
+  kind of thing, decided by the script's contract, and nothing else.
+- Helpers stay executable subprocesses returning data on stdout (see the
+  extraction rule) — which is exactly why this discipline has to hold.
 
 ### Extraction rule (decided 2026-07-30)
 
