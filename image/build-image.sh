@@ -261,10 +261,24 @@ main() {
         return 0
     fi
 
-    stage_fetch
-    stage_rootfs
-    slim_rootfs
-    stage_assemble
+    # Sending a finished image needs no base image, no rootfs and no assembly.
+    # Without this, --stream on a host that already had the artifact still ran
+    # stage 1 -- which on 2026-08-26 failed its disk precheck and blocked the
+    # transfer on the very box whose tight disk is the reason --stream exists.
+    #
+    # The integrity steps are deliberately NOT skipped: the digest is recomputed
+    # and the image re-verified below before a single byte goes out. What is
+    # skipped is only the work that would REBUILD an artifact that already
+    # exists. --force still forces the full path.
+    if [ "$STREAM" -eq 1 ] && [ "$FORCE" -eq 0 ] &&
+       [ -f "$IMG" ] && [ -f "$IMG.manifest" ]; then
+        note "image present — verifying and streaming it, no build stages"
+    else
+        stage_fetch
+        stage_rootfs
+        slim_rootfs
+        stage_assemble
+    fi
     record_hash "$IMG"
     run_verify "$IMG"
     [ "$STREAM" -eq 0 ] || emit_stream "$IMG"

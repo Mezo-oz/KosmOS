@@ -136,6 +136,36 @@ decompress() {
     mv "$img.part" "$img"
 }
 
+# Disk for the work that is actually LEFT, not for the work in general.
+#
+# The blanket "~4 GB free" check this replaces ran before looking at what was
+# already on disk, so a host holding a verified .xz AND a decompressed .img --
+# with nothing left to do -- still failed once free space dropped below it.
+# Not hypothetical: on 2026-08-26 it blocked `build-image.sh --stream` on a box
+# whose only remaining job was to compress an image that already existed, which
+# is precisely the host whose tight disk is the reason --stream exists.
+#
+# Still checked BEFORE the work and not after, which was the sound half of the
+# original: running out of disk midway through decompression leaves a truncated
+# .img.part that looks like an interrupted download.
+#
+# A cached .xz that FAILS its pin is refetched by fetch_xz, and this budget does
+# not cover that download. That fails cleanly on disk at curl rather than
+# silently, and it is rare enough not to be worth hashing 500 MB twice on every
+# build to predict.
+require_space() {
+    local xz="$1" img="$2" need=0 avail_mb
+    [ -f "$img" ] || need=$(( need + 3072 ))
+    [ -f "$xz" ]  || need=$(( need + 700 ))
+    if [ "$need" -eq 0 ]; then
+        note "base already fetched and decompressed; no disk needed"
+        return 0
+    fi
+    avail_mb=$(df -Pm "$CACHE" | awk 'NR==2 {print $4}')
+    [ "${avail_mb:-0}" -ge "$need" ] ||
+        die "need ~${need} MB free in $CACHE for the remaining work, have ${avail_mb} MB"
+}
+
 main() {
     case "${1-}" in
         --print-pin) print_pin; return 0 ;;
@@ -152,15 +182,7 @@ main() {
     local xz="$CACHE/${BASE_NAME}.img.xz"
     local img="$CACHE/${BASE_NAME}.img"
 
-    # ~3.5 GB for both files. Checked before the download rather than after,
-    # because running out of disk halfway through decompression leaves a
-    # truncated .img.part that looks like an interrupted download.
-    local avail_mb
-    avail_mb=$(df -Pm "$CACHE" | awk 'NR==2 {print $4}')
-    if [ "${avail_mb:-0}" -lt 4096 ]; then
-        die "need ~4 GB free in $CACHE, have ${avail_mb} MB"
-    fi
-
+    require_space "$xz" "$img"
     fetch_xz "$xz"
     decompress "$xz" "$img"
 
