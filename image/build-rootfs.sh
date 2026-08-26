@@ -44,7 +44,6 @@
 set -euo pipefail
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SELF_DIR/.." && pwd)"
 CACHE="${KOSMOS_BUILD_CACHE:-/var/tmp/kosmos-build}"
 
 ROOTFS="$CACHE/rootfs"
@@ -143,9 +142,20 @@ base_image() {
 # filesystem is not an ordinary directory tree: it has hardlinks, xattrs and
 # capabilities (setcap on ping, for one), and losing them produces a rootfs
 # that boots and then misbehaves in ways nothing points at.
+#
+# THE MANIFEST DIES WITH THE ROOTFS IT DESCRIBES, and that is what the rm below
+# is for. write_manifest only runs on success, so before 2026-08-26 a build
+# that failed after this point left the PREVIOUS run's manifest sitting beside
+# a half-built rootfs. That is not merely untidy: build-image.sh skips stage 2
+# when a manifest and rootfs/usr both exist, so the next run without --force
+# would assemble an image on the half-built tree and ship the stale manifest as
+# its provenance. Observed that day -- it claimed a SATCOM stack that was not
+# there and omitted the rauc packages that were. A failed build must leave no
+# provenance at all, which is the honest state and the one that fails loudly.
 extract_base() {
     local img="$1" mnt="$CACHE/mnt-base"
 
+    rm -f "$MANIFEST"
     safe_rmtree "$ROOTFS"
     safe_rmtree "$BOOTFS"
     mkdir -p "$ROOTFS" "$BOOTFS"
@@ -263,25 +273,11 @@ install_apt_userspace() {
         die "apt-get install failed in chroot"
 }
 
-# The WHOLE userspace directory goes in: 03-satcom-stack.sh resolves 03a/03b/03c
-# from its own $SELF_DIR. KOSMOS_ASSUME_YES=1 is mandatory, not a convenience --
-# without it every script's prompt reads EOF, exits 3, and the sequencer reports
-# SKIPPED, so this function would succeed having installed nothing. ROADMAP 4a.
+# Hours, not minutes, and it is the one step that needs the repo's userspace/
+# rather than just image/ -- so it lives beside this file and preflights that
+# dependency itself. See image/build-satcom.sh.
 install_satcom() {
-    step "building the SATCOM stack from source (hours, not minutes)"
-    local dst="$ROOTFS/tmp/kosmos-userspace"
-    sudo rm -rf "$dst"
-    sudo mkdir -p "$dst"
-    sudo cp "$REPO_ROOT"/userspace/*.sh "$dst/"
-    sudo chmod +x "$dst"/*.sh
-
-    local s
-    for s in 02c-sdr-userspace.sh 03-satcom-stack.sh; do
-        step "chroot: $s"
-        in_chroot "KOSMOS_ASSUME_YES=1 bash /tmp/kosmos-userspace/$s" ||
-            die "$s failed in chroot"
-    done
-    sudo rm -rf "$dst"
+    "$SELF_DIR/build-satcom.sh" "$ROOTFS" || die "build-satcom.sh failed"
 }
 
 # Remove this stage's own mess before the rootfs is handed to stage 3.
