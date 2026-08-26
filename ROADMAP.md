@@ -986,10 +986,9 @@ Artifact and its digests are off-box, outside the repo, at
 3. SDR++'s module set is decided by what earlier stages drag in — see the
    ⚠️ under stage 2. Not fixed, and a lock file would not catch it.
 4. `root=` is a device path, so the image is card-specific (no NVMe).
-5. **No build stage installs `rauc`.** `system.conf` is written into both
-   slots, but nothing runs `apt install rauc`, so `kosmos-mark-good.sh` exits 2
-   — "cannot decide" — on a box built today. Safe direction, deliberate, and
-   the next thing to close.
+5. ~~No build stage installs `rauc`~~ ✅ **closed 2026-08-26** — stage 2's
+   `APT_PACKAGES` now carries `rauc rauc-service`, and `verify-image.sh`
+   asserts both are in the finished image. See 4d.
 
 *(Known-open 4 of the previous list, `rauc/rauc#1599`, is closed: the gate it
 named fired on 2026-08-24 and the re-check was done on 2026-08-26. The answer
@@ -1826,10 +1825,44 @@ boot partition).
   rebuilt before the boot test, not just reflashed** — and `98 of 98` is now a
   stale figure rather than a wrong one.
 
-  ⚠️ **`rauc` is not yet installed by any build stage.** `system.conf` is
-  written into both slots but nothing runs `apt install rauc`, so `mark-good`
-  exits 2 ("cannot decide") on a box built today. That is the safe direction and
-  it is deliberate, but it is the next thing to close.
+##### ✅ rauc is installed by stage 2 — 2026-08-26, and it is TWO packages
+
+  `image/build-rootfs.sh`'s `APT_PACKAGES` now reads
+  `rt-tests stress-ng rauc rauc-service`. Stage 2 is the right home and the
+  only possible one: apt needs a chroot, stage 3 provisions a plain directory,
+  and stage 2 builds the single rootfs that stage 3 copies into both slots.
+
+  Nothing is pinned beyond what apt already guarantees, which is this project's
+  standing position on apt sources — verified against the archive's signed
+  Release file rather than a hand-carried digest. Confirmed available
+  2026-08-26: **`rauc 1.13-3+deb13u1`, arm64, trixie main**, so the base image
+  needs no backport, no PPA and no third-party archive.
+
+  ⚠️ **The split is the part worth writing down, because it fails silently.**
+  Debian's `rauc` package ships **only** `/usr/bin/rauc` and a journal catalog.
+  The systemd unit and the D-Bus plumbing —
+  `/usr/lib/systemd/system/rauc.service`,
+  `/usr/share/dbus-1/system-services/de.pengutronix.rauc.service` and its
+  policy file — are in a **separate `rauc-service` package**.
+
+  Install only the first and two things break at once, both quietly:
+  `rauc status mark-good` has no service to reach over D-Bus, and
+  `kosmos-mark-good.service`'s `Wants=rauc.service` names a unit that does not
+  exist — which systemd logs and then carries on from. Neither shows up until
+  the moment an update needs committing, which is the worst time to find out.
+  `verify-image.sh` asserts **both** paths in the finished image for exactly
+  that reason.
+
+  The split is reported at two different strengths on purpose.
+  `provision-rauc.sh` **warns** if the rootfs it is handed lacks either — a
+  `--prep-only` rootfs, or a stale one in the build cache, is a legitimate
+  intermediate state and policing stage 2 is not stage 3's job. The finished
+  **artifact** is where it becomes an assertion, because an image is not an
+  intermediate.
+
+  ⚠️ **Both `image/build-rootfs.sh` and `image/verify-image.sh` now sit at
+  exactly 400 lines.** The next addition to either fires the extraction rule.
+  Recorded here so that lands as a decision rather than a surprise mid-change.
 
   ✅ **Slot identity check — built and tested on hardware, 2026-08-23.** It had
   been recorded here as needing RAUC. It does not: the firmware publishes both

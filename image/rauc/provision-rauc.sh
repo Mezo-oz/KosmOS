@@ -18,6 +18,26 @@
 #
 # It writes only inside the slot root it is handed. Nothing here touches the
 # build host, the loop device, or the partition table.
+#
+# ---------------------------------------------------------------------------
+# THE PACKAGES ARE INSTALLED BY STAGE 2, NOT HERE. apt needs a chroot and this
+# runs against a plain directory, so `rauc rauc-service` lives in
+# build-rootfs.sh's APT_PACKAGES. Stage 2 builds ONE rootfs that stage 3 copies
+# into both slots, which is the right place for it anyway.
+#
+# ⚠️ IT IS TWO PACKAGES, AND THE SPLIT IS NOT OBVIOUS. Debian's `rauc` ships
+# only /usr/bin/rauc and a journal catalog. The systemd unit and the D-Bus
+# plumbing -- /usr/lib/systemd/system/rauc.service,
+# /usr/share/dbus-1/system-services/de.pengutronix.rauc.service and its policy
+# file -- are in a SEPARATE `rauc-service` package (arch: all).
+#
+# Install only the first and two things break quietly at once: `rauc status
+# mark-good` has no service to reach over D-Bus, and kosmos-mark-good.service's
+# `Wants=rauc.service` names a unit that does not exist -- which systemd logs
+# and then carries on from. Both surface at the moment an update needs
+# committing, which is the worst possible time to discover them.
+#
+# Verified against trixie 2026-08-26: rauc 1.13-3+deb13u1, arm64, in main.
 # ============================================================================
 
 set -euo pipefail
@@ -61,6 +81,18 @@ main() {
     sudo mkdir -p "$root/etc/systemd/system/multi-user.target.wants"
     sudo ln -sf /etc/systemd/system/kosmos-mark-good.service \
         "$root/etc/systemd/system/multi-user.target.wants/kosmos-mark-good.service"
+
+    # Stage 2 installs the packages, so this only reports. It does NOT die: a
+    # rootfs built with --prep-only, or an older one still in the build cache,
+    # is a legitimate intermediate state and policing stage 2 is not stage 3's
+    # job. The finished ARTIFACT is where this becomes an assertion --
+    # verify-image.sh fails on it, because an image is not an intermediate.
+    local missing=""
+    [ -x "$root/usr/bin/rauc" ] || missing="rauc"
+    [ -f "$root/usr/lib/systemd/system/rauc.service" ] ||
+        missing="${missing:+$missing }rauc-service"
+    [ -z "$missing" ] ||
+        note "WARNING slot $slot: not installed in this rootfs: $missing"
 
     note "slot $slot: rauc system.conf, backend, selector mountpoint, mark-good enabled"
 }

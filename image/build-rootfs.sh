@@ -253,7 +253,8 @@ install_kernel_modules() {
     note "modules installed for $kver; boot files stay in $tmp for stage 3"
 }
 
-readonly APT_PACKAGES="rt-tests stress-ng"
+# rauc + rauc-service: Debian splits the CLI from rauc.service. See ROADMAP 4d.
+readonly APT_PACKAGES="rt-tests stress-ng rauc rauc-service"
 
 install_apt_userspace() {
     step "installing apt-based userspace: $APT_PACKAGES"
@@ -283,10 +284,6 @@ install_satcom() {
     sudo rm -rf "$dst"
 }
 
-# Every line records what this run ACTUALLY did. The first draft hardcoded the
-# apt package list, so a --prep-only run produced a manifest claiming packages
-# it had never installed -- a provenance file that lies is worse than none,
-# because it is the thing a later reader trusts instead of checking.
 # Remove this stage's own mess before the rootfs is handed to stage 3.
 #
 # Measured on the first full --with-satcom build, 2026-08-23: the finished
@@ -323,6 +320,10 @@ clean_rootfs() {
     note "rootfs $before MiB -> $after MiB (reclaimed $((before - after)) MiB)"
 }
 
+# Every line records what this run ACTUALLY did. The first draft hardcoded the
+# apt package list, so a --prep-only run produced a manifest claiming packages
+# it had never installed -- a provenance file that lies is worse than none,
+# because it is the thing a later reader trusts instead of checking.
 write_manifest() {
     local img="$1" kernel="$2" apt="$3" satcom="$4"
     {

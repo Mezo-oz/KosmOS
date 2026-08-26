@@ -298,13 +298,10 @@ verify_access() {
 # p7 — shared by both slots and survives every update, so it is seeded with
 # mount points rather than content.
 # ----------------------------------------------------------------------------
-# The A/B update machinery (ROADMAP 4d).
-#
-# The backend is checked by reading its path OUT OF the system.conf that will
-# be used and testing that path inside the mount -- not by looking for a name
-# this script remembers. Same lesson as the SATCOM binaries: a check that
-# supplies its own idea of where the answer lives can pass on an image that
-# does not contain it.
+# The A/B update machinery (ROADMAP 4d). The backend is checked by reading its
+# path OUT OF the system.conf that will be used and testing that path inside
+# the mount -- same lesson as the SATCOM binaries: a check that supplies its
+# own idea of where the answer lives can pass on an image lacking it.
 verify_rauc() {
     local slot="$1"
     local dir="$MNT/root$slot" conf handler selp mp opts
@@ -318,6 +315,12 @@ verify_rauc() {
     check "system.conf names a boot backend" test -n "$handler"
     check "the backend exists in the image at $handler" sudo test -x "$dir$handler"
 
+    # Both packages. Debian's `rauc` is the CLI only; rauc.service and the
+    # D-Bus policy are in `rauc-service`, and missing it fails quietly.
+    check "rauc CLI installed" sudo test -x "$dir/usr/bin/rauc"
+    check "rauc.service present (the rauc-service package)" \
+        sudo test -f "$dir/usr/lib/systemd/system/rauc.service"
+
     check "mark-good script installed" \
         sudo test -x "$dir/usr/local/lib/kosmos/kosmos-mark-good.sh"
     check_eq "mark-good unit mode" "644" \
@@ -325,12 +328,10 @@ verify_rauc() {
     check "mark-good is enabled" sudo test -L \
         "$dir/etc/systemd/system/multi-user.target.wants/kosmos-mark-good.service"
 
-    # Three independent artifacts have to agree that p1 is mounted somewhere:
-    # slots.conf names the selector partition, fstab mounts that partition, and
-    # the mountpoint has to exist in the root. If the directory is missing the
-    # mount silently does not happen and the backend cannot reach autoboot.txt
-    # -- which is exactly the state every image before 2026-08-26 shipped in,
-    # and which no check at the time could see.
+    # Three artifacts must agree that p1 is mounted: slots.conf names the
+    # selector partition, fstab mounts it, and the mountpoint must exist. A
+    # missing directory means the mount silently does not happen -- the state
+    # every image before 2026-08-26 shipped in, invisible to every check then.
     selp="$(sread "$dir/etc/kosmos/slots.conf" | sed -n 's/^KOSMOS_SELECTOR_PARTITION=//p')"
     check "slots.conf names the selector partition" test -n "$selp"
     mp="$(sread "$dir/etc/fstab" | awk -v n="p${selp}" '$1 ~ n"$" { print $2 }')"
