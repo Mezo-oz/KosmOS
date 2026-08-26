@@ -949,38 +949,41 @@ appliance. Phases 1–2 build the parts; Phase 3 makes them run themselves.*
 
 #### 4a. Image Building
 
-**⏳ Started 2026-08-23. Code-complete 2026-08-24.** The base-image question 4d
-deferred here is decided, all four stages are built and have run on hardware,
-and the release artifact exists. What is left is a boot test, which needs
-hardware this box does not have.
+**⏳ Started 2026-08-23. Code-complete 2026-08-24. Artifact rebuilt 2026-08-26
+to carry 4d.** The base-image question 4d deferred here is decided, all four
+stages are built and have run on hardware, and the release artifact exists.
+What is left is a boot test, which needs hardware this box does not have.
 
-##### 📌 PICK UP HERE — paused 2026-08-24
+##### 📌 PICK UP HERE — paused 2026-08-26
 
-**State: 4a is code-complete.** All four stages are built and have run; the
-image is slimmed, verified at **98 of 98** structural + release checks (a
-count now superseded — 4d added assertions on 2026-08-26 and the artifact
-predates them), and a
-**3.57 GB `kosmos-rpi5.img.gz`** has been streamed off pi-server and had its
-round trip confirmed against the digest recorded before compression.
+**State: 4a is code-complete and the artifact is current.** A full `--force`
+rebuild on 2026-08-26 carries Phase 4d's update machinery — rauc and
+rauc-service, the boot backend, the p1 selector mount and the mark-good unit.
+It passes **127 of 127** structural + release checks, up from 98; the 29 new
+ones are 4d's and every one passed on the first real image.
+
+**Artifact:** `X:\kosmos-images\kosmos-rpi5.img.gz`, **3.49 GB**, raw digest
+`9fedaa86f1e35226ba60cbf8d159aa6dae096aea369b2dda377b9d219da33fa1`, round trip
+confirmed by decompressing to `sha256sum` on the receiving end. It supersedes
+`b1c4c74c…`, which predated 4d entirely and is gone.
+
+Its provenance says what is actually in it, which is the point of having
+rebuilt rather than patched:
+
+```
+apt_userspace  rt-tests stress-ng rauc rauc-service
+satcom_stack   built from source
+kernel         6.12.98-kosmos+
+base_sha256    acff736ca7945e3b305f07cda4abdb870910e12634991da69783611756e381b3
+```
 
 **Everything left in 4a needs hands, not code.** The image has never booted.
 The protocol is written down below — *The boot test — protocol* — and it
 needs a card reader on another machine and a spare card. **Keep pi-server's
 card intact until the new one is proven**; it is the only route back.
 
-Artifact and its digests are off-box, outside the repo, at
-`X:\kosmos-images\`. The raw-image digest is
-`b1c4c74c0d53c2d31003457353abb45678e2926a602b6ff475fb73c53edbbe4f`.
-
 **Known-open, in the order they will bite:**
-1. **The artifact is stale — rebuild before flashing.** ⚠️ *Added 2026-08-26.*
-   4d's boot backend landed, and with it three changes to what the image must
-   contain: the p1 mountpoint at `/boot/selector`, `/etc/rauc/system.conf`, and
-   the enabled `kosmos-mark-good.service`. The 3.57 GB image predates all
-   three. Flashing it would still be a valid *boot* test of the kernel and the
-   SATCOM stack, but not of the A/B mechanism, and it would need reflashing
-   afterwards. Rebuild first; the boot test is the expensive step, not the
-   build.
+1. ~~The artifact is stale~~ ✅ **closed 2026-08-26 by the rebuild above.**
 2. The image has never booted. Everything either script can tell you is
    structural, and both say so in their own passing output.
 3. SDR++'s module set is decided by what earlier stages drag in — see the
@@ -1103,7 +1106,7 @@ Split by artifact, each independently runnable, sequencer on top — the shape
 | 2 | `image/build-rootfs.sh` | KosmOS rootfs (chroot: kernel + userspace) | ✅ built, run on pi-server |
 | 3 | `image/assemble-image.sh` | A/B `.img` per `layout.sh`, both slots + `slots.conf` | ✅ built, image produced |
 | 4 | `image/build-image.sh` | sequencer → `.img.gz` on stdout | ✅ built, 3.6 GB streamed |
-| → | `image/verify-image.sh` | structural assertions over a finished `.img` | ✅ 96/96 at the time; 4d added more, not yet re-run |
+| → | `image/verify-image.sh` | structural assertions over a finished `.img` | ✅ **127/127** on the 2026-08-26 rebuild (was 96, then 98) |
 
 - [x] **Stage 1 — fetch and verify the base.** `image/fetch-base.sh`, 172 lines.
   Downloads, verifies, decompresses, prints the `.img` path on stdout; every
@@ -1394,7 +1397,7 @@ Split by artifact, each independently runnable, sequencer on top — the shape
   ever: it failed 2 of 98 on the unslimmed image, naming both trees, and passes
   98 of 98 now.
 
-##### The boot test — protocol, decided 2026-08-24
+##### The boot test — protocol, decided 2026-08-24, extended 2026-08-26 for 4d
 
 Human hands required; nothing here can flash. **Venue: pi-server's own Pi with
 its proven card physically removed.** altai is never a test venue (production
@@ -1405,22 +1408,103 @@ The invariant: **the proven card is never inserted in anything that can write
 while the test runs.** Worst case under this protocol is downtime, never data
 loss.
 
-1. Flash the spare card from `kosmos-rpi5.img.gz` (Imager, "Use custom").
-   Confirming the target device is the one irreversible step — verify it twice.
-2. Clean shutdown of pi-server. Pull its card; it sits on the desk as the
+**Artifact:** `X:\kosmos-images\kosmos-rpi5.img.gz`, 3.49 GB, built 2026-08-26.
+Raw digest `9fedaa86f1e35226ba60cbf8d159aa6dae096aea369b2dda377b9d219da33fa1`,
+round trip confirmed. 127/127 structural + release checks. Never booted.
+
+1. **Flash the spare card** from `kosmos-rpi5.img.gz` (Imager, "Use custom" —
+   it reads `.img.gz` directly, which is why the artifact is gzip). Confirming
+   the target device is the one irreversible step — verify it twice.
+
+   ⚠️ **Decline Imager's OS customisation.** It writes `userconf.txt` and SSH
+   settings into the FIRST FAT partition, which on this layout is the 16 MB
+   selector holding `autoboot.txt` and nothing else — `verify-image.sh` asserts
+   p1 holds exactly one file. Customising there edits the partition that
+   decides which slot boots. The image already ships a provisioned account.
+
+2. **Clean shutdown of pi-server.** Pull its card; it sits on the desk as the
    rollback state.
-3. Boot the spare. Run the acceptance checks: `uname -r` reports
-   `6.12.98-kosmos+`, `slot-identity.sh` agrees booted-bootfs with mounted-root,
-   `kosmos-health-check.sh` passes, sshd answers on the key.
-4. Shut down, restore the original card, confirm pi-server is back **regardless
-   of pass or fail**. Results get acted on from a healthy box, not a broken one.
 
+3. **Boot the spare, and get in.** The account is **`kosmos`**, not `homelab` —
+   `homelab` is pi-server's own installed system, not the image. Key-only, and
+   the key in `~/.ssh/id_ed25519` is already baked in.
 
-⚠️ **Disk on the build host is the tight constraint.** pi-server has ~18 GB
-free; the base costs ~3.5 GB and the assembled image ~9.5 GB. That fits, with
-little room for a second copy or an uncompressed intermediate. Stage 3 should
-write the image once rather than build-then-copy, and the figure gets re-checked
-before stage 3 runs rather than after it fails.
+   Same Pi, same MAC, so DHCP will almost certainly return **192.168.1.2**. But
+   the image boots as hostname `raspberrypi`, so the name `pi-server` may stop
+   resolving — use the address. A fresh image has fresh host keys, so clear the
+   old one or ssh refuses to connect:
+
+   ```
+   ssh-keygen -R 192.168.1.2
+   ssh kosmos@192.168.1.2
+   ```
+
+4. **Run the acceptance checks.** The first three predate 4d; the rest are new
+   on 2026-08-26 and have never run on hardware.
+
+   ```
+   uname -r                                              # want 6.12.98-kosmos+
+   /usr/local/lib/kosmos/slot-identity.sh                # want SLOT=A, VERDICT=consistent
+   /usr/local/lib/kosmos/kosmos-health-check.sh; echo $?  # want exit 0
+   findmnt /boot/selector -o TARGET,SOURCE,FSTYPE,OPTIONS # want ro
+   sudo /usr/local/lib/kosmos/kosmos-boot-backend.sh get-primary   # want A
+   sudo /usr/local/lib/kosmos/kosmos-boot-backend.sh get-current   # want A
+   sudo rauc status
+   systemctl status kosmos-mark-good.service --no-pager -l
+   ```
+
+   **`get-primary` and `get-current` both returning `A` is the finding that
+   matters.** Everything the backend has been tested against so far was a
+   fixture; this is the first time it reads a real `autoboot.txt` off a real p1
+   and a real partition number out of the firmware's device tree. If those two
+   disagree, or either errors, stop and read `slot-identity.sh` output before
+   touching anything — that is the cross-slot state 4d exists to prevent.
+
+   **Expect advisory warnings** from the health check for the SDR dongle and
+   the TLE timer. That is correct, not a failure: only CRITICAL affects the
+   exit code, and a box with no dongle must never trigger a rollback.
+
+   **`rauc` has never run on a KosmOS box.** If `rauc status` complains,
+   capture the exact text rather than working around it; its first words are
+   worth reading carefully, and `system.conf` naming a `bootloader=custom`
+   handler is the part least likely to be right first time.
+
+5. **Shut down, restore the original card, confirm pi-server is back —
+   regardless of pass or fail.** Results get acted on from a healthy box, not a
+   broken one.
+
+**What a pass does and does not prove.** It proves the image boots, the kernel
+is ours, the two halves of a slot agree, and the update machinery is wired up
+correctly. It does **not** exercise an actual A/B update: nothing has installed
+a bundle, flipped a slot, or rolled back. That needs `4d`'s bundle work and a
+second image to update *to*, and it is the next thing after this test passes.
+
+⚠️ **Disk on the build host is the tight constraint, and the estimates above
+were wrong.** ✅ **Measured on the 2026-08-26 rebuild**, replacing the guessed
+~18 GB / ~3.5 GB / ~9.5 GB:
+
+| | MiB |
+|---|---|
+| Base image, decompressed | 2840 |
+| Rootfs, cleaned, with the SATCOM stack | 4991 |
+| Assembled image, **apparent** | 13856 |
+| Assembled image, **allocated** (it stays sparse) | **10504** |
+| Free on a 29 GB card with all of the above resident | 3433 |
+
+**The image being sparse is the fact that makes this fit at all** — 13856 MiB
+apparent against 10504 MiB actually written. `create_image`'s precheck already
+reasons in written bytes rather than apparent size, which is why it passes on a
+host that a naive `13856 > free` check would refuse.
+
+The rebuild needed **~1.5 GB more than the disk had**, and it was found by
+deleting `~/kosmos/linux` (3075 MiB, a clean checkout at the pinned commit
+`f5a99b95…`, so `git clone` restores it and the image build never touches it —
+it consumes the 32 MB tarball). Recorded because the next `--force` rebuild
+will need the same room, and the cheapest place to find it is the same place.
+
+⚠️ **Do not clear the rootfs cache in a tidying mood.** It is 4991 MiB and it
+is the difference between a failed boot test costing minutes and costing two
+hours.
 
 ##### ✅ Root slot size — measured 2026-08-23, and 4096 MiB was wrong
 
@@ -1817,13 +1901,16 @@ boot partition).
   partition, and the mountpoint must exist in the root — because any two of
   those agreeing is what shipped the defect above.
 
-  ⚠️ **None of this has run against a real image, and the check count is
-  therefore not re-measured.** The additions are structural assertions over an
-  artifact that only pi-server can produce; the 3.57 GB image at
-  `X:\kosmos-images\` predates them and does not contain the selector
-  mountpoint, the RAUC config or the mark-good unit. **The image has to be
-  rebuilt before the boot test, not just reflashed** — and `98 of 98` is now a
-  stale figure rather than a wrong one.
+  ✅ **Run against a real image the same day: 127 of 127, no failures.** The
+  note here previously said the additions were unexercised and the count not
+  re-measured; the `--force` rebuild of 2026-08-26 settled both. All 29 new
+  assertions passed in both slots on the first real artifact — including the
+  one that reads the backend's path out of the `system.conf` that will actually
+  be used and tests *that* path inside the mount, and the three-way selector
+  agreement. Reproduced on a second independent verify pass.
+
+  Still true, and the part that matters: **none of it has BOOTED.** 127
+  structural checks say the image is built correctly, not that it runs.
 
 ##### ✅ rauc is installed by stage 2 — 2026-08-26, and it is TWO packages
 
