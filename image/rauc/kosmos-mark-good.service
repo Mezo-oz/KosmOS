@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# ============================================================================
+# KosmOS — commit the running slot if it is healthy (Phase 4d)
+# ============================================================================
+# ORDERING IS THE DESIGN HERE. The upstream Pi backend's own mark-good unit is
+# `After=local-fs.target`, which fires while the system is still coming up --
+# so the health check would be asked whether services are running before they
+# have been started, and would answer "no" about a slot that is fine. Wrong in
+# the expensive direction: it reverts good updates.
+#
+# So this runs at the end of a normal boot, and deliberately does NOT order
+# itself after network-online.target. 4d's field story is a box with no network
+# at all; waiting for one would stall the commit until systemd's timeout on
+# exactly the deployment this mechanism exists for.
+#
+# ConditionPathExists skips the unit cleanly on a pre-4d single-root image,
+# where there are no slots to mark and a failure would be noise rather than
+# information.
+# ============================================================================
+
+[Unit]
+Description=KosmOS: mark the booted A/B slot good if the health check passes
+Documentation=https://github.com/Mezo-oz/KosmOS/blob/main/ROADMAP.md
+ConditionPathExists=/etc/kosmos/slots.conf
+Wants=rauc.service
+After=rauc.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/lib/kosmos/kosmos-mark-good.sh
+
+# No Restart=. A boot that failed the health check must STAY failed: retrying
+# until it passes is a slow way of marking every slot good, which is the one
+# outcome this unit exists to prevent.
+
+[Install]
+WantedBy=multi-user.target

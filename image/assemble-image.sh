@@ -241,6 +241,9 @@ populate_root() {
     sudo install -m 0755 "$SELF_DIR/health-check/kosmos-health-check.sh" \
         "$SELF_DIR/health-check/slot-identity.sh" \
         "$MNT/root$slot/usr/local/lib/kosmos/"
+
+    # The A/B update machinery, extracted at 393/400. See rauc/provision-rauc.sh.
+    "$SELF_DIR/rauc/provision-rauc.sh" "$MNT/root$slot" "$slot" "$TARGET_DEV"
 }
 
 # Turn the base image's placeholder account into a usable, key-only login.
@@ -311,6 +314,10 @@ seed_data() {
     step "seeding the data partition (p7)"
     mount_into "${LOOPDEV}p7" "$MNT/data"
     sudo mkdir -p "$MNT/data/captures" "$MNT/data/tle" "$MNT/data/profiles" "$MNT/data/home"
+    # RAUC's data-directory (system.conf names /data/rauc). It holds the record
+    # of which slot is good, so it has to be the one thing an update cannot
+    # reach -- anywhere under / is inside a slot and gets replaced wholesale.
+    sudo mkdir -p "$MNT/data/rauc"
     layout slotmap | sudo tee "$MNT/data/slots.conf" > /dev/null
 }
 

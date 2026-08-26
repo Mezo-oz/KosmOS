@@ -957,7 +957,9 @@ hardware this box does not have.
 ##### 📌 PICK UP HERE — paused 2026-08-24
 
 **State: 4a is code-complete.** All four stages are built and have run; the
-image is slimmed, verified at **98 of 98** structural + release checks, and a
+image is slimmed, verified at **98 of 98** structural + release checks (a
+count now superseded — 4d added assertions on 2026-08-26 and the artifact
+predates them), and a
 **3.57 GB `kosmos-rpi5.img.gz`** has been streamed off pi-server and had its
 round trip confirmed against the digest recorded before compression.
 
@@ -971,15 +973,28 @@ Artifact and its digests are off-box, outside the repo, at
 `b1c4c74c0d53c2d31003457353abb45678e2926a602b6ff475fb73c53edbbe4f`.
 
 **Known-open, in the order they will bite:**
-1. The image has never booted. Everything either script can tell you is
+1. **The artifact is stale — rebuild before flashing.** ⚠️ *Added 2026-08-26.*
+   4d's boot backend landed, and with it three changes to what the image must
+   contain: the p1 mountpoint at `/boot/selector`, `/etc/rauc/system.conf`, and
+   the enabled `kosmos-mark-good.service`. The 3.57 GB image predates all
+   three. Flashing it would still be a valid *boot* test of the kernel and the
+   SATCOM stack, but not of the A/B mechanism, and it would need reflashing
+   afterwards. Rebuild first; the boot test is the expensive step, not the
+   build.
+2. The image has never booted. Everything either script can tell you is
    structural, and both say so in their own passing output.
-2. SDR++'s module set is decided by what earlier stages drag in — see the
+3. SDR++'s module set is decided by what earlier stages drag in — see the
    ⚠️ under stage 2. Not fixed, and a lock file would not catch it.
-3. `root=` is a device path, so the image is card-specific (no NVMe).
-4. `rauc/rauc#1599` — re-check before writing any custom backend.
+4. `root=` is a device path, so the image is card-specific (no NVMe).
+5. **No build stage installs `rauc`.** `system.conf` is written into both
+   slots, but nothing runs `apt install rauc`, so `kosmos-mark-good.sh` exits 2
+   — "cannot decide" — on a box built today. Safe direction, deliberate, and
+   the next thing to close.
 
-*(Known-open 4 of the previous list, the stock module trees, is closed: stage 4
-removes them and `verify-image.sh --release` asserts it.)*
+*(Known-open 4 of the previous list, `rauc/rauc#1599`, is closed: the gate it
+named fired on 2026-08-24 and the re-check was done on 2026-08-26. The answer
+was to stop waiting — see 4d. Before that, the stock module trees closed the
+same way: stage 4 removes them and `verify-image.sh --release` asserts it.)*
 
 ##### ✅ Stage 3's product is verified — 96 checks, 2026-08-24
 
@@ -1089,7 +1104,7 @@ Split by artifact, each independently runnable, sequencer on top — the shape
 | 2 | `image/build-rootfs.sh` | KosmOS rootfs (chroot: kernel + userspace) | ✅ built, run on pi-server |
 | 3 | `image/assemble-image.sh` | A/B `.img` per `layout.sh`, both slots + `slots.conf` | ✅ built, image produced |
 | 4 | `image/build-image.sh` | sequencer → `.img.gz` on stdout | ✅ built, 3.6 GB streamed |
-| → | `image/verify-image.sh` | 96 assertions over a finished `.img` | ✅ 96/96 |
+| → | `image/verify-image.sh` | structural assertions over a finished `.img` | ✅ 96/96 at the time; 4d added more, not yet re-run |
 
 - [x] **Stage 1 — fetch and verify the base.** `image/fetch-base.sh`, 172 lines.
   Downloads, verifies, decompresses, prints the `.img` path on stdout; every
@@ -1655,23 +1670,166 @@ boot partition).
   proves the advisory tier does not trigger a rollback, which is the whole point
   of the split. The harness was removed afterwards and the box left as found.
 
-  Still to build: `kosmos-mark-good.sh` (run the checker, call
-  `rauc status mark-good` only on exit 0) and its systemd unit.
+  ✅ **`kosmos-mark-good.sh` and its unit — built 2026-08-26.**
+  `image/rauc/kosmos-mark-good.sh` runs the checker and calls
+  `rauc status mark-good` **only on exit 0**; `kosmos-mark-good.service` is a
+  `Type=oneshot` enabled by symlink at image-assembly time.
 
-  ⏸️ **Decided 2026-08-23: wait for `rauc/rauc#1599` rather than write a custom
-  backend.** The re-verification below found that PR open, unmerged, actively
-  maintained and milestoned for **RAUC v1.17**. Writing a Pi firmware backend
-  now means writing the thing upstream is finishing, then throwing it away —
-  and carrying it in the meantime, on a mechanism (`autoboot.txt` rewriting,
-  slot flipping) where a divergence between our version and the merged one is
-  not a merge conflict but a box that boots the wrong slot.
+  Two decisions in it are worth more than the code. **Its ordering is not
+  `After=local-fs.target`**, which is what the upstream Pi backend's own
+  `rauc-mark-good.service` ships: that fires while the system is still coming
+  up, so the health check would be asked whether services are running before
+  they had been started, and would answer "no" about a slot that is fine —
+  reverting good updates. And it deliberately does **not** order after
+  `network-online.target`: 4d's field story is a box with no network, so
+  waiting for one would stall the commit until systemd's timeout on exactly the
+  deployment this mechanism exists for.
 
-  The cost of waiting is bounded and known: 4d is the *last* phase that needs
-  it, and 4a is a hard prerequisite that is not started. There is no scenario
-  where the backend is the thing blocking progress today. **Re-check #1599 at
-  the point 4a produces its first image**; if v1.17 has not landed by then,
-  reopen the build-or-wait question with an actual date to reason about instead
-  of a milestone label.
+  **There is no `Restart=`.** A boot that failed the health check must stay
+  failed; retrying until it passes is a slow way of marking every slot good.
+
+  Exit 2 (cannot decide — no checker, no rauc, no slot table) does **not** mark
+  good either. That is the safe direction: it costs a rollback to a slot that
+  worked, where the other direction commits a slot nobody vouched for.
+
+##### ✅ The boot backend — built 2026-08-26, and the wait was reopened first
+
+  ⏸️→▶️ **The 2026-08-23 decision was to wait for `rauc/rauc#1599`, re-checking
+  "at the point 4a produces its first image". 4a produced it 2026-08-24, so the
+  gate fired. The re-check says stop waiting.**
+
+  | | 2026-08-23, when it was parked | 2026-08-26 |
+  |---|---|---|
+  | #1599 | open, milestoned v1.17 | still open — **19 months** (opened 2025-01-16), last comment 2026-08-14, `mergeable_state: clean` |
+  | v1.17 milestone | a label | **1 of 10 issues closed** |
+  | v1.16 | — | **not released**, 5 of 70 open |
+  | Latest release | — | v1.15.2, 2026-03-27 |
+
+  Minor releases run 5–7 months apart and v1.17 is a full release behind a
+  v1.16 that has not shipped, so the honest estimate is **mid-2027**. That is
+  the "actual date to reason about" the parking note asked for, and it is not a
+  bounded wait.
+
+  **The objection that justified waiting does not apply to what was built.** It
+  was about carrying a *patched RAUC* that would diverge from the merged
+  version — "not a merge conflict but a box that boots the wrong slot". But
+  `bootloader=custom` is **stock RAUC**: a handler registered by config,
+  implementing five verbs, patching nothing. It predates v1.11 (`get-current`
+  was added there) and **Debian trixie ships v1.13**, so the base image can
+  `apt install rauc` with no backport, no PPA and no fork. When #1599 lands,
+  `bootloader=` names the native backend and `image/rauc/kosmos-boot-backend.sh`
+  is deleted. There is nothing to unwind.
+
+  ⚠️ **The tree had already made this decision and the prose had not.**
+  `layout.sh`'s `emit_rauc` has emitted `bootloader=custom` since it was
+  written, pointing at `/usr/lib/rauc/rpi-firmware-backend` — a path that
+  exists in no package, marked "⚠️ unverified against current upstream". So the
+  shipped config named a backend that was never going to be there, while this
+  document said the question was still open. Worth recording as a class: the
+  parked decision was in prose, the live decision was in an emitter, and
+  nothing made them meet.
+
+  **`image/rauc/kosmos-boot-backend.sh`, 386 lines.** It holds no state. All
+  three answers derive from three facts: `autoboot.txt`'s `[all] boot_partition`
+  (the committed slot), and `/chosen/bootloader/{partition,tryboot}` from the
+  device tree (the booted slot, and whether this boot is a try). It has **no
+  device-tree code of its own** — `slot-identity.sh` already reads those,
+  endianness and all, so the backend runs it as a subprocess. Helper returns
+  data, caller judges, and no `fdtget` dependency.
+
+  **Why not vendor the Rtone backend**, which is the same author's pre-upstream
+  form of #1599 and is what `layout.sh` used to name: it `source`s both
+  `autoboot.txt` and `system.conf` into the shell and reads keys back through
+  `eval`. That is precisely the hazard `emit_slotmap` refuses — a corrupt config
+  becoming code — running as root, at boot, deciding which slot boots. It is
+  also 500 lines against a 400-line cap. Its **behaviour** is the reference and
+  is matched verb for verb, so the eventual swap to the native backend is a
+  config change and not a change of semantics; its implementation is not.
+
+  Its layout independently corroborates ours, which is worth something: p1
+  selector, p2/p3 FAT, p5/p6 ext4, `tryboot_a_b=1` with `[tryboot]` naming the
+  other slot. Two projects arriving at the same table from the same firmware
+  docs.
+
+  **The selector write is the dangerous operation and is treated as one.**
+  p1 is mounted `ro` and remounted `rw` only for the instant of a write; the
+  new file is written to a temp path, **read back and re-parsed**, and only
+  renamed if the swap produced exactly the expected two values. FAT has no
+  journal and this is the file that decides whether the box boots at all.
+
+  **Falsified before believed — 38 assertions, all passing.** An off-target
+  fixture harness drives every verb through all four states (booted-A steady,
+  tryboot-into-B, post-commit, and the marked-bad rollback) and 16 refusals:
+  unknown bootnames, a non-numeric `boot_partition`, `[all]` and `[tryboot]`
+  naming the same partition, a shell-injection payload in `slots.conf` (rejected,
+  nothing executed), a missing selector, a write that cannot succeed, and a
+  `slot-identity.sh` that cannot answer. After every refusal the live selector
+  is asserted unchanged.
+
+  **And the harness was itself falsified**, by mutation: five deliberate breaks
+  of the backend, four caught. The two that were not are the finding worth
+  keeping:
+
+  1. **A validation that could not fail, and was deleted.** `commit_swap`
+     validated `[all]` against the slot map — and no input could tell its
+     presence from its absence, because every caller resolves `get_primary`
+     first, which already refuses a bad `[all]`. It was dead code of exactly
+     the kind `verify-image.sh` was written to avoid: an assertion that goes on
+     agreeing with itself after the code around it changes. Removed, with the
+     invariant written down for the next caller. The `[tryboot]` check beside it
+     **is** reachable — `get_primary` never reads that key — and is tested.
+  2. **The read-back before rename looked like decoration and is not.** The
+     ordinary harness cannot reach it, because `swap_stream` is correct so the
+     read-back always agrees. Settled with a paired mutation instead: break
+     `swap_stream`, then compare the backend with and without the check.
+     **With it, the write is refused and the original selector survives
+     (`[all]=2 [tryboot]=3`). Without it, a corrupt selector naming partition 2
+     in both sections is installed.** It stays, on evidence.
+
+##### ⚠️ Three defects the backend found by being written
+
+  None of these were in the backend. They were in the image it has to run on,
+  and they surfaced only because something finally had to *use* the mechanism
+  rather than assemble it.
+
+  1. **The slot selector was never mounted.** `emit_fstab` mounted p2, the root
+     and p7 — and not p1. `autoboot.txt` was written at *build* time and
+     verified at *build* time, so nothing noticed that the running system had
+     no path to the one file it exists to rewrite. Every check of it so far had
+     run against an image on the build host, never against a booted one. Now
+     mounted at `/boot/selector`, `ro,nofail` — `ro` because of the journal-less
+     FAT argument above, `nofail` so a pre-4d single-root card still boots.
+  2. **RAUC's `data-directory` was `/mnt/data/rauc`, and nothing mounts
+     `/mnt/data`.** The data partition mounts at `/data`. So RAUC's record of
+     which slot is good would have landed on the root filesystem — the one
+     replaced wholesale by the update it was tracking. This is the "silently
+     wiped on update" hazard in this very section, applied to the bookkeeping
+     of the mechanism itself. Now `/data/rauc`, created by `seed_data`.
+  3. **`assemble-image.sh` hit the 400-line cap** at 393 + ~35, so the
+     extraction rule fired as written. `image/rauc/provision-rauc.sh` (68
+     lines) came out — split by concern, not by line count: the assembler
+     builds an image, the helper installs the update mechanism into it.
+
+  **`verify-image.sh` gained assertions for all of it**, built the way the
+  SATCOM-binary check had to be rebuilt: it reads the handler path *out of the
+  `system.conf` that will be used* and tests that path inside the mount, rather
+  than looking for a name it remembers. The selector check is a three-way
+  agreement — `slots.conf` names the selector partition, `fstab` mounts that
+  partition, and the mountpoint must exist in the root — because any two of
+  those agreeing is what shipped the defect above.
+
+  ⚠️ **None of this has run against a real image, and the check count is
+  therefore not re-measured.** The additions are structural assertions over an
+  artifact that only pi-server can produce; the 3.57 GB image at
+  `X:\kosmos-images\` predates them and does not contain the selector
+  mountpoint, the RAUC config or the mark-good unit. **The image has to be
+  rebuilt before the boot test, not just reflashed** — and `98 of 98` is now a
+  stale figure rather than a wrong one.
+
+  ⚠️ **`rauc` is not yet installed by any build stage.** `system.conf` is
+  written into both slots but nothing runs `apt install rauc`, so `mark-good`
+  exits 2 ("cannot decide") on a box built today. That is the safe direction and
+  it is deliberate, but it is the next thing to close.
 
   ✅ **Slot identity check — built and tested on hardware, 2026-08-23.** It had
   been recorded here as needing RAUC. It does not: the firmware publishes both
@@ -2018,16 +2176,18 @@ KosmOS/
 │   ├── ✅ fetch-base.sh         # Stage 1: pinned stock Pi OS Lite, verified
 │   ├── ✅ build-rootfs.sh       # Stage 2: chroot install of kernel + userspace
 │   ├── ✅ assemble-image.sh     # Stage 3: A/B image per layout.sh
-│   ├── ·  build-image.sh        # Stage 4: sequencer → .img.gz
+│   ├── ✅ build-image.sh        # Stage 4: sequencer → .img.gz
+│   ├── ✅ verify-image.sh       # Assertions over a finished .img; read-only
 │   ├── ·  build-bundle.sh       # .raucb bundle from a built image
-│   ├── ·  rauc/
-│   │   ├── ·  system.conf       # Slot definitions: boot/root A+B, data
-│   │   └── ·  kosmos.cert.pem   # Signing cert; private key NEVER committed
-│   └── health-check/            # Gate that calls rauc status mark-good
+│   ├── rauc/                    # The A/B update machinery (4d)
+│   │   ├── ✅ kosmos-boot-backend.sh   # RAUC custom backend: the five verbs
+│   │   ├── ✅ kosmos-mark-good.sh      # Runs the checker, marks good on exit 0 only
+│   │   ├── ✅ kosmos-mark-good.service # Ordered late; no Restart=
+│   │   ├── ✅ provision-rauc.sh        # Installs the above into one slot root
+│   │   └── ·  kosmos.cert.pem          # Signing cert; private key NEVER committed
+│   └── health-check/            # The verdict the mark-good gate consumes
 │       ├── ✅ kosmos-health-check.sh # The verdict: exit 0 = safe to mark good
-│       ├── ✅ slot-identity.sh       # Which slot booted, and do boot+root agree (helper)
-│       ├── ·  kosmos-mark-good.sh    # Wrapper: runs the above, then rauc
-│       └── ·  kosmos-mark-good.service
+│       └── ✅ slot-identity.sh       # Which slot booted, and do boot+root agree (helper)
 └── ✅ .gitignore
 
 (NOT in this repo: gr-icesickle — lives with the IceSickle project; runs ON

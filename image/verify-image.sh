@@ -298,12 +298,65 @@ verify_access() {
 # p7 — shared by both slots and survives every update, so it is seeded with
 # mount points rather than content.
 # ----------------------------------------------------------------------------
+# The A/B update machinery (ROADMAP 4d).
+#
+# The backend is checked by reading its path OUT OF the system.conf that will
+# be used and testing that path inside the mount -- not by looking for a name
+# this script remembers. Same lesson as the SATCOM binaries: a check that
+# supplies its own idea of where the answer lives can pass on an image that
+# does not contain it.
+verify_rauc() {
+    local slot="$1"
+    local dir="$MNT/root$slot" conf handler selp mp opts
+
+    conf="$dir/etc/rauc/system.conf"
+    check "rauc system.conf present" sudo test -f "$conf"
+    check_eq "rauc system.conf matches layout" \
+        "$("$LAYOUT" rauc "$TARGET_DEV")" "$(sread "$conf")"
+
+    handler="$(sread "$conf" | sed -n 's/^bootloader-custom-backend=//p')"
+    check "system.conf names a boot backend" test -n "$handler"
+    check "the backend exists in the image at $handler" sudo test -x "$dir$handler"
+
+    check "mark-good script installed" \
+        sudo test -x "$dir/usr/local/lib/kosmos/kosmos-mark-good.sh"
+    check_eq "mark-good unit mode" "644" \
+        "$(smode "$dir/etc/systemd/system/kosmos-mark-good.service")"
+    check "mark-good is enabled" sudo test -L \
+        "$dir/etc/systemd/system/multi-user.target.wants/kosmos-mark-good.service"
+
+    # Three independent artifacts have to agree that p1 is mounted somewhere:
+    # slots.conf names the selector partition, fstab mounts that partition, and
+    # the mountpoint has to exist in the root. If the directory is missing the
+    # mount silently does not happen and the backend cannot reach autoboot.txt
+    # -- which is exactly the state every image before 2026-08-26 shipped in,
+    # and which no check at the time could see.
+    selp="$(sread "$dir/etc/kosmos/slots.conf" | sed -n 's/^KOSMOS_SELECTOR_PARTITION=//p')"
+    check "slots.conf names the selector partition" test -n "$selp"
+    mp="$(sread "$dir/etc/fstab" | awk -v n="p${selp}" '$1 ~ n"$" { print $2 }')"
+    check "fstab mounts the selector (p$selp)" test -n "$mp"
+    check "and its mountpoint exists in the root" sudo test -d "$dir$mp"
+    opts="$(sread "$dir/etc/fstab" | awk -v n="p${selp}" '$1 ~ n"$" { print $4 }')"
+    check_eq "and it is mounted read-only" "ro" "${opts%%,*}"
+}
+
 verify_data() {
     step "p7 — data"
-    local dir="$MNT/data" n
+    local dir="$MNT/data" n datadir
     mount_ro "${LOOPDEV}p7" "$dir"
     n="$(sudo find "$dir" -mindepth 1 -maxdepth 1 -type d -not -name 'lost+found' | wc -l)"
     check "data partition seeded" test "$n" -gt 0
+
+    # RAUC's data-directory holds the record of which slot is good. If it is
+    # anywhere under / it is inside a slot, and the update it is tracking
+    # destroys it. Read the path from system.conf rather than assuming it.
+    datadir="$(sread "$MNT/rootA/etc/rauc/system.conf" | sed -n 's/^data-directory=//p')"
+    check "system.conf names a data-directory" test -n "$datadir"
+    case "$datadir" in
+        /data/*) ok "rauc data-directory is on the data partition" ;;
+        *) bad "rauc data-directory '$datadir' is inside a slot" ;;
+    esac
+    check "and it exists on p7" sudo test -d "$dir/${datadir#/data/}"
 }
 
 # ----------------------------------------------------------------------------
@@ -325,9 +378,11 @@ main() {
     verify_boot A 2
     verify_root A 5 "$kver"
     verify_access A
+    verify_rauc A
     verify_boot B 3
     verify_root B 6 "$kver"
     verify_access B
+    verify_rauc B
     verify_data
 
     echo
