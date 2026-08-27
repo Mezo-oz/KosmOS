@@ -8,3 +8,16 @@ kosmos-kernel-*.tar.gz
 # once there were tests that could actually be run off the Pi.
 __pycache__/
 *.pyc
+
+# Update-signing key material (4d). make-keys.sh already REFUSES to write
+# inside the work tree, so nothing should ever match these -- they are the
+# second lock, for a key that arrives some other way: copied here by hand to
+# "just test something", or dropped in by a script that took a wrong path.
+#
+# A private key pushed to a public repo is compromised the moment it lands and
+# rewriting history does not un-publish it, so the cost of the redundant rule
+# is nothing and the cost of not having it is a new CA and a reflash of every
+# box in the field.
+*.key.pem
+*.key
+*.pem

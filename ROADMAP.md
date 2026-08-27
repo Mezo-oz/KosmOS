@@ -954,18 +954,54 @@ to carry 4d.** The base-image question 4d deferred here is decided, all four
 stages are built and have run on hardware, and the release artifact exists.
 What is left is a boot test, which needs hardware this box does not have.
 
-##### 📌 PICK UP HERE — paused 2026-08-26
+##### 📌 PICK UP HERE — updated 2026-08-27
 
-**State: 4a is code-complete and the artifact is current.** A full `--force`
-rebuild on 2026-08-26 carries Phase 4d's update machinery — rauc and
-rauc-service, the boot backend, the p1 selector mount and the mark-good unit.
-It passes **127 of 127** structural + release checks, up from 98; the 29 new
-ones are 4d's and every one passed on the first real image.
+**⚠️ The artifact below cannot install an update, and the fix needs a decision
+only you can make.** It ships no RAUC keyring — see *The keyring was never
+installed* in 4d — so `rauc install` fails with `failed to load CA file`. The
+127/127 pass is real and says nothing about this, because the check that would
+have caught it did not exist until 2026-08-27.
 
-**Artifact:** `X:\kosmos-images\kosmos-rpi5.img.gz`, **3.49 GB**, raw digest
-`9fedaa86f1e35226ba60cbf8d159aa6dae096aea369b2dda377b9d219da33fa1`, round trip
-confirmed by decompressing to `sha256sum` on the receiving end. It supersedes
-`b1c4c74c…`, which predated 4d entirely and is gone.
+It is still the right card to flash for the boot test: that protocol exercises
+`rauc status`, not `install`, and every line of it stands. What a green boot
+test will no longer let you conclude is that the update path works.
+
+**To make it updateable — two commands, and the first one is yours:**
+
+```sh
+# 1. Create the root CA. ON REMOVABLE MEDIA, and never on pi-server or in the
+#    repo. This is the crown jewel: it is the trust root every KosmOS box will
+#    carry, and make-keys.sh refuses a destination inside the work tree.
+image/rauc/make-keys.sh ca /media/<offline>/kosmos-ca
+
+# 2. Inject its public cert into the existing image, on pi-server, in place.
+ssh pi-server 'kosmos-img/image/inject-keyring.sh \
+    --expect 9fedaa86f1e35226ba60cbf8d159aa6dae096aea369b2dda377b9d219da33fa1 \
+    --cert ~/ca.cert.pem'
+```
+
+Then re-verify (`verify-image.sh --release`, which now asserts the keyring),
+re-stream, and **retire the old digest everywhere it appears — this file
+included.** The injector prints the new one on stdout and rewrites
+`<image>.sha256`; nothing else updates itself.
+
+**Why an injector and not a rebuild.** A `--force` rebuild is ~2 hours and the
+last one came up ~1.5 GB short on disk. `image/inject-keyring.sh` is committed,
+takes the input digest as a mandatory argument, and prints the output digest —
+so the modified artifact's history is as auditable as a pipeline run, which is
+what provenance actually means. Hands on a mounted image is the thing that
+would break it. It modifies in place because the image is 11 GB and pi-server
+has 3.4 GB free; there is nowhere to put a copy.
+
+**⚠️ Two images' worth of confusion is now possible on the Windows drive.** The
+digest below is the *pre-injection* one. Whoever flashes needs to know which
+`.img.gz` in `X:\kosmos-images\` is current, and the only durable answer is the
+`.sha256` beside it.
+
+**Artifact (pre-injection):** `X:\kosmos-images\kosmos-rpi5.img.gz`, **3.49 GB**,
+raw digest `9fedaa86f1e35226ba60cbf8d159aa6dae096aea369b2dda377b9d219da33fa1`,
+round trip confirmed by decompressing to `sha256sum` on the receiving end. It
+supersedes `b1c4c74c…`, which predated 4d entirely and is gone.
 
 Its provenance says what is actually in it, which is the point of having
 rebuilt rather than patched:
@@ -992,6 +1028,11 @@ card intact until the new one is proven**; it is the only route back.
 5. ~~No build stage installs `rauc`~~ ✅ **closed 2026-08-26** — stage 2's
    `APT_PACKAGES` now carries `rauc rauc-service`, and `verify-image.sh`
    asserts both are in the finished image. See 4d.
+6. **The artifact ships no RAUC keyring, so it cannot install a bundle.**
+   Fixed in the pipeline for every future build (`provision-rauc.sh`) and
+   gated so it cannot recur (`verify-image.sh`); the *existing* artifact needs
+   `inject-keyring.sh` run against it, which waits on a CA. See the top of this
+   section and 4d.
 
 *(Known-open 4 of the previous list, `rauc/rauc#1599`, is closed: the gate it
 named fired on 2026-08-24 and the re-check was done on 2026-08-26. The answer
@@ -1411,6 +1452,12 @@ loss.
 **Artifact:** `X:\kosmos-images\kosmos-rpi5.img.gz`, 3.49 GB, built 2026-08-26.
 Raw digest `9fedaa86f1e35226ba60cbf8d159aa6dae096aea369b2dda377b9d219da33fa1`,
 round trip confirmed. 127/127 structural + release checks. Never booted.
+
+⚠️ **This artifact carries no RAUC keyring** (4d, 2026-08-27). Every step below
+still stands — `rauc status` does not read the keyring — but a pass proves
+nothing about `rauc install`, which on this image fails with `failed to load CA
+file`. If the card is being flashed after the injector has run, use the new
+digest from `kosmos-rpi5.img.gz.sha256`, not the one above.
 
 1. **Flash the spare card** from `kosmos-rpi5.img.gz` (Imager, "Use custom" —
    it reads `.img.gz` directly, which is why the artifact is gzip). Confirming
@@ -1912,6 +1959,97 @@ boot partition).
   Still true, and the part that matters: **none of it has BOOTED.** 127
   structural checks say the image is built correctly, not that it runs.
 
+##### ⚠️ The keyring was never installed — 127 of 127 on an image that could not update (found 2026-08-27)
+
+**`system.conf` has named a keyring since the day 4d started, and nothing ever
+wrote the file.** `layout.sh` emits `[keyring] path=/etc/rauc/kosmos.cert.pem`;
+a repo-wide search for `cert|keyring|pem|openssl` returned those two lines and
+nothing else. No build stage created it, and no check looked for it.
+
+Measured on rauc 1.13-3+deb13u1, the version in the image, this is not cosmetic:
+
+| keyring | `rauc info <bundle>` |
+|---|---|
+| missing | **rc=1** — `failed to load CA file '/etc/rauc/kosmos.cert.pem'` |
+| present | rc=0 — `Verified inline signature by 'O = KosmOS…'` |
+
+So the 3.49 GB artifact of 2026-08-26 passes **127 of 127** structural and
+release checks and **would have refused every bundle it was ever offered.** The
+boot test is unaffected — that exercises `rauc status`, not `install` — so this
+would have survived a green boot test and surfaced at the first real update.
+
+**This is the standard-8 shape again, and that is why it gets a section rather
+than a line in a commit message.** Every check green, artifact functionally
+dead, and only a check nobody had written yet could see it. The trailing path
+on stdout was invisible because gzip ignores trailing junk; this was invisible
+because a config key pointing at a missing file reads exactly like one pointing
+at a present file until something tries to open it.
+
+**The sharpest part: the principle was already written down and had already been
+applied — just not here.** The comment above `verify_rauc` says to read the path
+*out of* the config and test *that* path, and it says so because the boot
+backend had taught that lesson. The keyring sat three lines below the backend in
+the same generated file, and was missed anyway. A principle recorded next to one
+of its instances does not generalise itself.
+
+**So the fix is three things, and only the third one closes the class:**
+
+1. **`image/rauc/make-keys.sh`** — the PKI. A root CA and a signing cert issued
+   by it, which is the split that lets the signing key rotate: devices carry
+   only the CA cert, so a reissued signing cert needs no reflash. Signing with
+   the CA key directly would make the key you must never lose the same key you
+   use every release.
+
+   It **refuses to write key material inside the work tree**, resolved with
+   `realpath -m` so `..` cannot walk back in. A `.gitignore` is a request; a
+   private key pushed to a public repo is compromised the moment it lands and
+   rewriting history does not un-publish it.
+
+   **The CA cert is deliberately not committed either.** Shipping ours would
+   make it the default trust root for every image anyone builds from this tree
+   — a stranger's box installing bundles we signed. Whoever builds KosmOS
+   generates their own, which is why `provision-rauc.sh` fails loudly rather
+   than falling back to a default.
+
+2. **`provision-rauc.sh` installs it**, at whatever path that slot's own
+   `system.conf` names, from `KOSMOS_RAUC_CERT`, parsing it with `openssl x509`
+   before it goes in. Every future build carries a keyring or does not build.
+
+3. **`verify-image.sh` asserts it — the general form.** For every file
+   `system.conf` points at, the image must actually deliver it. Present is not
+   enough: the file is parsed as a certificate, checked to be valid for at least
+   another year, and matched against `KOSMOS_RAUC_CERT_FINGERPRINT` when the
+   operator sets one — because a truncated copy, a DER file with a `.pem` name,
+   and the *wrong CA's* cert are all present, all nonzero, and all fatal at the
+   moment an update is being installed.
+
+   Verified both ways against a fixture on 2026-08-27: **FAIL on both slots**
+   without the cert, ok with it, FAIL on a fingerprint mismatch, and FAIL on a
+   file that is present but is not a certificate. Adds 8 checks (10 with
+   fingerprint pinning), so a passing release image should now report **135**
+   where it reported 127.
+
+##### ⚠️ `local a=1 b=$a` does not work, and it bit twice the same day
+
+`local` creates **every** name it declares as an unset local *before* assigning
+any of them, so a later initializer that references an earlier name in the same
+statement reads the shadowed empty local — not the value just written:
+
+```bash
+f() { local a="$1" b="$2" c="/x/root$b"; }   # c is "/x/root", or under
+f 5 A                                        # set -u: "b: unbound variable"
+```
+
+Found by running `inject-keyring.sh` against a fixture — it had never run — and
+then found again in `provision-rauc.sh`, written the same hour, where it would
+have failed on the first real build. Under `set -u` it is a hard error, which is
+the merciful case; with nounset off it is a silent empty string in a path.
+
+A ten-line detector was run over every `*.sh` in the tree. Those two were the
+only occurrences, and `verify-image.sh`'s superficially identical
+`local dir="$MNT/root$slot"` is fine because `slot` is assigned on a previous
+line. Worth re-running after any batch of new shell.
+
 ##### ✅ rauc is installed by stage 2 — 2026-08-26, and it is TWO packages
 
   `image/build-rootfs.sh`'s `APT_PACKAGES` now reads
@@ -1991,9 +2129,96 @@ boot partition).
   everything else byte-identical gives UNHEALTHY exit 1 on that one check alone.
   A box with no map at all stays HEALTHY, exit 0, warning only.
 
-- [ ] **Bundle build + offline install.** Build the `.raucb` on the VM, sign it,
-  put it on a USB stick, `rauc install /media/usb/kosmos-1.4.raucb`. No network in
-  either direction: not to update, not to roll back. This is the field story.
+- [ ] **Bundle build + offline install.** Build the `.raucb`, sign it, put it on
+  a USB stick, `rauc install /media/usb/kosmos-1.4.raucb`. No network in either
+  direction: not to update, not to roll back. This is the field story.
+
+  ⏳ **The build half is done and proven off-target, 2026-08-27. The install
+  half has never run, because nothing has ever booted this image.**
+
+  ~~Build the `.raucb` on the VM~~ — **there is no VM.** That word survived from
+  the sketch 4d was adopted with; the Hardware Topology has two Pi 5s and
+  nothing else. The build host is **WSL Debian trixie on the Windows box**, and
+  the reason is not convenience:
+
+  | | pi-server | WSL trixie |
+  |---|---|---|
+  | rauc | **not installed** | 1.13-3+deb13u1 — *identical to the image's* |
+  | free disk | 3.4 GB | 908 GB |
+  | loop devices | yes | yes |
+
+  A bundle carrying slot A is ~1.8 GB and the intermediate tars are another
+  ~1.8 GB, so pi-server cannot hold one and the image at the same time. The
+  version match is the more interesting half: bundles are built by the same
+  rauc that has to read them, so a format or handler difference cannot hide
+  between build host and target.
+
+  **`image/build-bundle.sh`**, 250 lines. Mounts slot A of a finished image
+  read-only, tars its rootfs and bootfs, writes the manifest, signs, and then
+  verifies the result **against the CA cert rather than the signing cert** —
+  because "this was signed here" and "a device will accept this" are different
+  questions and only the second one matters in the field.
+
+  ##### The payload is tars, and that is what makes a bundle fit at all
+
+  Read out of the shipped rauc binary rather than assumed — the extensions it
+  matches are `*.tar*`, `*.ext4`, `*.img`, `*.vfat`, `*.squashfs`, `*.ubifs`,
+  and the handler strings `tar-extract`, `mkfs.ext4` and `mkfs.vfat` are all
+  present. So for a `*.tar*` image RAUC formats the target slot and extracts
+  into it.
+
+  A raw-image bundle would carry a 4 GB ext4 and a 512 MB vfat verbatim,
+  ~4.5 GB. The tars are ~1.8 GB and the uncompressed form never has to exist.
+  That is the difference between a bundle that can be built on the hardware
+  this project owns and one that cannot.
+
+  Tars are taken `--numeric-owner --acls --xattrs`. Without the first, a rootfs
+  extracted on the target is owned by whoever holds uid 1000 there; without the
+  others, file capabilities are dropped and `ping` stops working for non-root
+  after an update — both of which look like a successful install.
+
+  ##### Format is `verity`, stated explicitly
+
+  Left unset, rauc 1.13 defaults to `plain` and warns. verity signs a dm-verity
+  root hash rather than the whole file, so the payload is checked as it is read
+  instead of only up front.
+
+  ##### The signing key cannot be encrypted at the moment of use
+
+  Measured, not assumed: `rauc bundle --key=<encrypted.pem>` with stdin closed
+  exits 1 with `PEM_def_callback: problems getting password`, and on a terminal
+  it prompts. There is no `--key-passphrase`.
+
+  **The first non-interactive run of `build-bundle.sh` hung**, and that is the
+  defect worth recording rather than the fix. openssl reads passphrases from
+  `/dev/tty`, not stdin, so piping one in does nothing at all — the process
+  waits forever while holding a loop device and a decrypted key. A release
+  build that hangs is worse than one that fails: nothing is reported, and the
+  window during which a plaintext key exists is unbounded. It now refuses up
+  front when the key is encrypted and there is no terminal, and takes
+  `KOSMOS_SIGN_PASS` (via openssl `env:`, never `pass:`, which would put the
+  secret in `argv` where `ps` can read it) for unattended builds.
+
+  The key is decrypted to a 0600 file under `KOSMOS_BUNDLE_TMP` — `/dev/shm` by
+  default, so the plaintext need never touch a disk — removed by an EXIT trap
+  installed before the file is written.
+
+  ##### Proven end to end on 2026-08-27, off-target, against a fixture
+
+  The fixture is a sparse image partitioned by **the real `layout.sh`** with all
+  six filesystems and both slots populated from `layout.sh` output, so nothing
+  in the test carries its own idea of the layout. Against it:
+
+  - encrypted key + no terminal → fails in under a second, does not hang
+  - build → 'verity' bundle, signed by the signing cert
+  - `rauc info --keyring=<CA cert>` → **verified via the chain**, which is the
+    device's question answered with the device's information
+  - an unrelated CA → **rejected**
+  - plaintext key → gone, zero residue in the temp directory
+
+  What this does **not** prove: that `rauc install` writes a slot correctly,
+  that the backend flips `autoboot.txt` on real hardware, or that a rollback
+  happens. All three need a booted box, and this image has never booted.
 
 - [x] **Hardware watchdog** — ✅ **verified present and already armed,
   2026-08-23. Nothing to implement; the work here is to not lose it.**
@@ -2298,13 +2523,18 @@ KosmOS/
 │   ├── ✅ assemble-image.sh     # Stage 3: A/B image per layout.sh
 │   ├── ✅ build-image.sh        # Stage 4: sequencer → .img.gz
 │   ├── ✅ verify-image.sh       # Assertions over a finished .img; read-only
-│   ├── ·  build-bundle.sh       # .raucb bundle from a built image
+│   ├── ✅ build-bundle.sh       # Signed .raucb from a built image (tars, verity)
+│   ├── ✅ inject-keyring.sh     # One-shot: keyring into an image built without one
 │   ├── rauc/                    # The A/B update machinery (4d)
 │   │   ├── ✅ kosmos-boot-backend.sh   # RAUC custom backend: the five verbs
 │   │   ├── ✅ kosmos-mark-good.sh      # Runs the checker, marks good on exit 0 only
 │   │   ├── ✅ kosmos-mark-good.service # Ordered late; no Restart=
 │   │   ├── ✅ provision-rauc.sh        # Installs the above into one slot root
-│   │   └── ·  kosmos.cert.pem          # Signing cert; private key NEVER committed
+│   │   └── ✅ make-keys.sh             # The CA + signing cert. NO key material,
+│   │                                   # AND NO CERT, is ever committed here —
+│   │                                   # a shipped CA cert would make this repo
+│   │                                   # the trust root for other people's boxes.
+│   │                                   # Build yours; point KOSMOS_RAUC_CERT at it.
 │   └── health-check/            # The verdict the mark-good gate consumes
 │       ├── ✅ kosmos-health-check.sh # The verdict: exit 0 = safe to mark good
 │       └── ✅ slot-identity.sh       # Which slot booted, and do boot+root agree (helper)

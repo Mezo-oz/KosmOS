@@ -38,15 +38,76 @@
 # committing, which is the worst possible time to discover them.
 #
 # Verified against trixie 2026-08-26: rauc 1.13-3+deb13u1, arm64, in main.
+#
+# ---------------------------------------------------------------------------
+# THE KEYRING. system.conf has always named one -- /etc/rauc/kosmos.cert.pem --
+# and until 2026-08-27 nothing in this repo ever put a file there. Measured on
+# rauc 1.13-3+deb13u1, that is not a warning:
+#
+#   rauc info <bundle>  -> rc=1
+#   failed to load CA file '/etc/rauc/kosmos.cert.pem' and/or directory '(null)'
+#
+# So every image built before that date passes all 127 structural checks and
+# then refuses every bundle it is ever offered. The cert is installed HERE, and
+# asserted by verify-image.sh, so the two cannot drift apart again.
+#
+# KOSMOS_RAUC_CERT names the CA certificate -- public, safe to copy anywhere,
+# and NOT shipped in this repo on purpose: committing one would make it the
+# trust root for every image anyone builds from this tree. Generate your own
+# with image/rauc/make-keys.sh. There is deliberately no default and no
+# fallback: an image that silently trusts nobody is the bug being fixed.
 # ============================================================================
 
 set -euo pipefail
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LAYOUT="$SELF_DIR/../layout.sh"
+RAUC_CERT="${KOSMOS_RAUC_CERT:-}"
 
 die()  { echo "provision-rauc.sh: $*" >&2; exit 1; }
 note() { echo "  $*" >&2; }
+
+# Install the CA certificate at whatever path system.conf's [keyring] names.
+#
+# The path is READ OUT OF the config that was just generated rather than
+# written here as a constant. layout.sh owns that path; a second copy of it in
+# this file is a copy that goes on being right until the day layout.sh changes,
+# and then installs a cert where nothing looks for it -- which is the same
+# shape as the bug this function exists to fix, one level along.
+install_keyring() {
+    local root="$1" slot="$2"
+    # Separate statement: `local` creates every name it declares as an unset
+    # local BEFORE assigning any of them, so `conf="$root/..."` in the line
+    # above would read the shadowed empty `root`, not the argument. Under
+    # `set -u` that is a hard "unbound variable" -- which is how it was found.
+    local conf="$root/etc/rauc/system.conf"
+    local path dir
+
+    path="$(sudo sed -n 's/^path=//p' "$conf" | tail -1)"
+    [ -n "$path" ] || die "slot $slot: system.conf names no [keyring] path"
+
+    [ -n "$RAUC_CERT" ] || die "KOSMOS_RAUC_CERT is not set.
+  system.conf points RAUC at '$path', and an image without a certificate there
+  refuses every bundle -- rauc exits 1 with 'failed to load CA file'. Generate
+  a CA and point this at its public cert:
+      image/rauc/make-keys.sh ca /media/<offline>/kosmos-ca
+      export KOSMOS_RAUC_CERT=/media/<offline>/kosmos-ca/ca.cert.pem"
+    [ -f "$RAUC_CERT" ] || die "KOSMOS_RAUC_CERT=$RAUC_CERT: not a file"
+
+    # Parse it before it goes in. A truncated or wrong-format file installs
+    # just as happily as a good one and fails on the box, mid-update.
+    openssl x509 -in "$RAUC_CERT" -noout > /dev/null 2>&1 ||
+        die "$RAUC_CERT: openssl does not parse this as a certificate"
+
+    dir="$(dirname "$path")"
+    sudo mkdir -p "$root$dir"
+    sudo install -m 0644 "$RAUC_CERT" "$root$path"
+    note "slot $slot: keyring installed at $path ($(cert_subject "$RAUC_CERT"))"
+}
+
+cert_subject() {
+    openssl x509 -in "$1" -noout -subject 2>/dev/null | sed 's/^subject=//'
+}
 
 main() {
     [ $# -eq 3 ] || die "usage: provision-rauc.sh <slot-root-dir> <A|B> <target-dev>"
@@ -70,6 +131,8 @@ main() {
 
     sudo mkdir -p "$root/etc/rauc"
     "$LAYOUT" rauc "$dev" | sudo tee "$root/etc/rauc/system.conf" > /dev/null
+
+    install_keyring "$root" "$slot"
 
     sudo install -m 0644 "$SELF_DIR/kosmos-mark-good.service" \
         "$root/etc/systemd/system/kosmos-mark-good.service"

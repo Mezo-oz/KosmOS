@@ -302,6 +302,72 @@ verify_access() {
 # path OUT OF the system.conf that will be used and testing that path inside
 # the mount -- same lesson as the SATCOM binaries: a check that supplies its
 # own idea of where the answer lives can pass on an image lacking it.
+# ----------------------------------------------------------------------------
+# The keyring, and the class of bug it stands for.
+#
+# WHAT HAPPENED. system.conf named /etc/rauc/kosmos.cert.pem from the day the
+# A/B work started, and nothing ever installed a file there. The image passed
+# 127 of 127 checks and could not have installed a single update: measured on
+# rauc 1.13-3+deb13u1, a missing keyring is `rauc info` exiting 1 with
+# "failed to load CA file", not a warning. Every check green, artifact
+# functionally dead -- the same shape as the trailing-path-on-stdout defect
+# that made standard 8 a rule.
+#
+# WHY THE CHECK IS WRITTEN THIS WAY. The comment above verify_rauc already
+# stated the principle -- read the path out of the config and test THAT path --
+# and the keyring was still missed, because the principle had only ever been
+# applied to the backend. So this is the general form: for every file
+# system.conf points at, assert the image actually delivers it. A config
+# referencing a path the build never wrote is now a FAIL, whatever the key.
+#
+# Parsing it as a certificate rather than stopping at "the file is there" is
+# the same reasoning one step on. A truncated copy, a DER file with a .pem
+# name, or the signing cert where the CA cert belongs are all present, all
+# nonzero, and all fatal on the box at the moment an update is being installed.
+verify_keyring() {
+    local dir="$1" conf="$2" path want got
+
+    path="$(sread "$conf" | sed -n 's/^path=//p' | tail -1)"
+    check "system.conf names a keyring" test -n "$path"
+    [ -n "$path" ] || return 0
+
+    if ! sudo test -f "$dir$path"; then
+        bad "the keyring exists in the image at $path"
+        # A note, not a second `bad`. Check counts are how this project talks
+        # about an image ("127 of 127"), so an explanatory line that increments
+        # the failure total makes one defect read as two.
+        echo "        without it rauc exits 1 on every bundle: 'failed to load CA file'"
+        return 0
+    fi
+    ok "the keyring exists in the image at $path"
+
+    if sudo openssl x509 -in "$dir$path" -noout > /dev/null 2>&1; then
+        ok "and openssl parses it as a certificate"
+    else
+        bad "and openssl parses it as a certificate"
+        return 0
+    fi
+
+    # Not expired, and not expiring so soon that a box built today stops
+    # trusting its own updates inside the release's life. -checkend takes
+    # seconds; 365 days is the horizon a yearly rebuild would notice.
+    if sudo openssl x509 -in "$dir$path" -noout -checkend 31536000 > /dev/null 2>&1; then
+        ok "and it is valid for at least another year"
+    else
+        bad "and it is valid for at least another year (expired or expiring)"
+    fi
+
+    # Pin the identity when the operator says which CA this image is supposed
+    # to trust. Presence and parseability cannot tell the right CA from a
+    # stale one left in the build cache -- both are certificates.
+    want="${KOSMOS_RAUC_CERT_FINGERPRINT:-}"
+    if [ -n "$want" ]; then
+        got="$(sudo openssl x509 -in "$dir$path" -noout -fingerprint -sha256 2>/dev/null |
+               sed 's/^.*=//')"
+        check_eq "and it is the expected CA" "$want" "$got"
+    fi
+}
+
 verify_rauc() {
     local slot="$1"
     local dir="$MNT/root$slot" conf handler selp mp opts
@@ -314,6 +380,8 @@ verify_rauc() {
     handler="$(sread "$conf" | sed -n 's/^bootloader-custom-backend=//p')"
     check "system.conf names a boot backend" test -n "$handler"
     check "the backend exists in the image at $handler" sudo test -x "$dir$handler"
+
+    verify_keyring "$dir" "$conf"
 
     # Both packages. Debian's `rauc` is the CLI only; rauc.service and the
     # D-Bus policy are in `rauc-service`, and missing it fails quietly.
