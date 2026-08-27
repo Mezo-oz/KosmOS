@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/kosmos-banner.png" alt="KosmOS login banner" width="680">
+</p>
+
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # KosmOS
 
