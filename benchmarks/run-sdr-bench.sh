@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================================
-# KosmOS — Test 2: dropped SDR samples (rtl_test sweep)
+# MolniyaOS — Test 2: dropped SDR samples (rtl_test sweep)
 # ============================================================================
 # Run this ON THE PI, once per boot configuration. REQUIRES the RTL-SDR dongle.
 #
@@ -52,7 +52,7 @@ RATES=(1024000 2048000 2400000 3200000)
 # you almost nothing.
 DURATION=600
 
-OUT_DIR="${KOSMOS_BENCH_OUT:-$SELF_DIR/results}"
+OUT_DIR="${MOLNIYA_BENCH_OUT:-$SELF_DIR/results}"
 
 # --- Argument handling ------------------------------------------------------
 
@@ -273,7 +273,7 @@ run_one() {
     start_load "$load"
 
     {
-        echo "# KosmOS SDR sample-loss benchmark"
+        echo "# MolniyaOS SDR sample-loss benchmark"
         echo "# config:     $CONFIG ($DETECTED)"
         echo "# rate:       $rate S/s"
         echo "# load:       $load"
@@ -314,7 +314,7 @@ RUN_COUNT=$(( ${#RATES[@]} * 2 ))
 EST_MIN=$(( (RUN_COUNT * (DURATION + 10)) / 60 + 1 ))
 
 echo "============================================"
-echo "  KosmOS SDR Sample-Loss Benchmark — Test 2"
+echo "  MolniyaOS SDR Sample-Loss Benchmark — Test 2"
 echo "============================================"
 echo ""
 echo "  configuration:  $CONFIG ($DETECTED)"

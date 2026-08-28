@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
-# gr-kosmos
+# gr-molniya
 
-Out-of-tree GNU Radio blocks for KosmOS.
+Out-of-tree GNU Radio blocks for MolniyaOS.
 
 **Status: implemented, half-verified — deliberately.** The probe's clock
 arithmetic lives in `gap_math.py` (standard library only) and is covered by
@@ -39,7 +39,7 @@ no published equivalent — RT-versus-stock comparisons in the SDR space do not
 carry in-flowgraph instrumentation.
 
 Scope is deliberately tiny: watch, count, log. No filtering, no correction, no
-DSP. See `python/kosmos/discontinuity_probe.py` for the design notes, including
+DSP. See `python/molniya/discontinuity_probe.py` for the design notes, including
 the one non-obvious part — a `sync_block` cannot see a gap by looking at its
 input buffer, because the buffer is always contiguous. The gap is visible only in
 the `rx_time` stream tags the hardware source emits.
@@ -54,19 +54,19 @@ the probe exists to catch. `gap_math.py` documents this and
 proves the pair arithmetic keeps the sample. Run the tests with:
 
 ```bash
-cd gr-kosmos/python/kosmos && python3 -m unittest test_gap_math
+cd gr-molniya/python/molniya && python3 -m unittest test_gap_math
 ```
 
 ## Layout
 
 ```
-gr-kosmos/
+gr-molniya/
 ├── README.md
 ├── install.sh                                  install for development use
 ├── grc/
-│   └── kosmos_discontinuity_probe.block.yml    GRC block definition
+│   └── molniya_discontinuity_probe.block.yml    GRC block definition
 └── python/
-    └── kosmos/
+    └── molniya/
         ├── __init__.py
         ├── discontinuity_probe.py              GNU Radio shell (thin glue)
         ├── gap_math.py                         the measurement — stdlib only
@@ -78,7 +78,7 @@ gr-kosmos/
 A full OOT module is generated, not written:
 
 ```bash
-gr_modtool newmod kosmos
+gr_modtool newmod molniya
 ```
 
 That produces the top-level `CMakeLists.txt`, the `cmake/Modules/` support files,
@@ -87,20 +87,20 @@ boilerplate that is version-specific to the GNU Radio it was generated against.
 Hand-writing that from memory would produce build files nobody has ever run, which
 is worse than having none: they would look authoritative and fail on the Pi.
 
-So this directory holds only the parts that are actually KosmOS's — the block, its
+So this directory holds only the parts that are actually MolniyaOS's — the block, its
 GRC definition, and a script that installs them for development use. When the
-block outgrows Python and needs a C++ port, run `gr_modtool newmod kosmos` on the
+block outgrows Python and needs a C++ port, run `gr_modtool newmod molniya` on the
 Pi and graft these files into the generated tree. `gr_modtool` will also generate
 correct bindings, which is the part you genuinely do not want to hand-write.
 
 ## Installing for development
 
 ```bash
-./gr-kosmos/install.sh            # install
-./gr-kosmos/install.sh --uninstall
+./gr-molniya/install.sh            # install
+./gr-molniya/install.sh --uninstall
 ```
 
-It does two things: makes `import kosmos` work for your user via a `.pth` file in
+It does two things: makes `import molniya` work for your user via a `.pth` file in
 your Python user site directory, and copies the GRC block definition into the
 directory GNU Radio already scans for installed blocks.
 
@@ -108,10 +108,10 @@ Requires the GNU Radio stack — run `userspace/03a-gnuradio-stack.sh` first.
 
 ### Naming note for later
 
-This installs a top-level `kosmos` Python package, and the GRC definition imports
-`from kosmos import discontinuity_probe` to match. `gr_modtool` on GNU Radio 3.10
+This installs a top-level `molniya` Python package, and the GRC definition imports
+`from molniya import discontinuity_probe` to match. `gr_modtool` on GNU Radio 3.10
 generates modules under the `gnuradio` namespace instead, so a generated module
-would be `from gnuradio import kosmos`. Switching to that convention is part of
+would be `from gnuradio import molniya`. Switching to that convention is part of
 graduating to a full module — the import in `grc/*.block.yml` has to change with
 it.
 

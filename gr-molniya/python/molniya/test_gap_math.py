@@ -2,16 +2,16 @@
 """
 Unit tests for gap_math — runnable anywhere Python runs.
 
-    cd gr-kosmos/python/kosmos && python3 -m unittest test_gap_math
+    cd gr-molniya/python/molniya && python3 -m unittest test_gap_math
 
 That is the only invocation that works, and it is worth knowing why before
 someone "fixes" it. `python3 -m unittest <path>` does not take a path, it
 takes a dotted module name. Nor can this run as part of the package: the
 import here is `from gap_math import ...`, flat and deliberate, because
-importing it as `kosmos.test_gap_math` executes __init__.py, which imports
+importing it as `molniya.test_gap_math` executes __init__.py, which imports
 the probe, which imports gnuradio — and the entire point of this file is to
 be runnable where gnuradio is not installed. Discovery from the repo root
-fails for a third reason: `gr-kosmos` is not a valid Python identifier.
+fails for a third reason: `gr-molniya` is not a valid Python identifier.
 
 No GNU Radio, no numpy, no hardware. That is the point: this is the half
 of the probe that CAN be verified off the Pi, so it is.

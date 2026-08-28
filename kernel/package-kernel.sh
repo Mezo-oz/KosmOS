@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================================
-# KosmOS — package a built kernel for transfer to the Pi
+# MolniyaOS — package a built kernel for transfer to the Pi
 # ============================================================================
 # Collects everything the Pi needs into one tarball:
 #   - Image                    → goes to /boot/firmware/
@@ -18,7 +18,7 @@
 # repackaging without rebuilding is genuinely useful — change a Pi-side script,
 # re-run this, get a fresh tarball in seconds instead of 90 minutes.
 #
-#   ./package-kernel.sh                    # uses ~/kosmos/linux
+#   ./package-kernel.sh                    # uses ~/molniya/linux
 #   ./package-kernel.sh /path/to/linux     # or an explicit source tree
 # ============================================================================
 
@@ -27,9 +27,9 @@ set -euo pipefail
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SELF_DIR/.." && pwd)"
 
-BUILD_DIR="${KOSMOS_BUILD_DIR:-$HOME/kosmos}"
+BUILD_DIR="${MOLNIYA_BUILD_DIR:-$HOME/molniya}"
 KERNEL_DIR="${1:-$BUILD_DIR/linux}"
-PACKAGE_DIR="$BUILD_DIR/kosmos-kernel-pkg"
+PACKAGE_DIR="$BUILD_DIR/molniya-kernel-pkg"
 
 if [ ! -d "$KERNEL_DIR" ]; then
     echo "ERROR: no kernel source tree at $KERNEL_DIR" >&2
@@ -71,7 +71,7 @@ mkdir -p "$PACKAGE_DIR"/{boot,modules}
 # Copy kernel image
 # The Pi 5 bootloader looks for "kernel_2712.img" by default,
 # but we'll use a custom name and point config.txt at it.
-cp arch/arm64/boot/Image "$PACKAGE_DIR/boot/kernel-kosmos.img"
+cp arch/arm64/boot/Image "$PACKAGE_DIR/boot/kernel-molniya.img"
 
 # Install modules to our package directory
 # INSTALL_MOD_PATH tells make "pretend this is the root filesystem"
@@ -133,7 +133,7 @@ done
 
 # Create the tarball
 cd "$BUILD_DIR"
-TARBALL="kosmos-kernel-${KERNEL_VERSION}.tar.gz"
+TARBALL="molniya-kernel-${KERNEL_VERSION}.tar.gz"
 tar czf "$TARBALL" -C "$PACKAGE_DIR" .
 
 echo ""
@@ -150,12 +150,12 @@ echo "    1. SCP to your Pi:"
 echo "       scp $BUILD_DIR/$TARBALL pi@<PI_IP>:~/"
 echo ""
 echo "    2. On the Pi, unpack and install:"
-echo "       mkdir -p ~/kosmos-kernel"
-echo "       tar xzf $TARBALL -C ~/kosmos-kernel"
-echo "       sudo bash ~/kosmos-kernel/install-kernel.sh"
+echo "       mkdir -p ~/molniya-kernel"
+echo "       tar xzf $TARBALL -C ~/molniya-kernel"
+echo "       sudo bash ~/molniya-kernel/install-kernel.sh"
 echo "       sudo reboot"
 echo ""
 echo "    3. After reboot, verify and install the SDR tools:"
-echo "       ~/kosmos-kernel/02-post-install.sh"
+echo "       ~/molniya-kernel/02-post-install.sh"
 echo ""
 echo "============================================"

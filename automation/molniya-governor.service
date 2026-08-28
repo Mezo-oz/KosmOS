@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================================
-# KosmOS — pin the CPU governor to performance at boot
+# MolniyaOS — pin the CPU governor to performance at boot
 # ============================================================================
 # Install with automation/install-governor.sh, which also handles the part a
 # unit file cannot: getting out of the way of whatever set the governor to
@@ -29,15 +29,15 @@
 # ============================================================================
 
 [Unit]
-Description=KosmOS: pin CPU scaling governor to performance
-Documentation=https://github.com/Mezo-oz/KosmOS
+Description=MolniyaOS: pin CPU scaling governor to performance
+Documentation=https://github.com/Mezo-oz/MolniyaOS
 After=multi-user.target
 ConditionPathExists=/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/usr/local/sbin/kosmos-set-governor performance
+ExecStart=/usr/local/sbin/molniya-set-governor performance
 
 [Install]
 WantedBy=multi-user.target

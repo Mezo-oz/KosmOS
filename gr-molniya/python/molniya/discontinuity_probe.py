@@ -96,7 +96,7 @@ class discontinuity_probe(gr.sync_block):
 
     def __init__(self,
                  sample_rate=2.4e6,
-                 log_path="/var/log/kosmos/discontinuity.jsonl",
+                 log_path="/var/log/molniya/discontinuity.jsonl",
                  tolerance_samples=2):
         gr.sync_block.__init__(
             self,

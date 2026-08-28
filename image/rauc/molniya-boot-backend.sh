@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================================
-# KosmOS — RAUC custom bootloader backend for the Raspberry Pi firmware (4d)
+# MolniyaOS — RAUC custom bootloader backend for the Raspberry Pi firmware (4d)
 # ============================================================================
 # RAUC calls this with one of five verbs. stdout is the answer, exit status is
 # whether the question could be answered, and every other word goes to stderr:
@@ -17,7 +17,7 @@
 #   [system]
 #   bootloader=custom
 #   [handlers]
-#   bootloader-custom-backend=/usr/local/lib/kosmos/kosmos-boot-backend.sh
+#   bootloader-custom-backend=/usr/local/lib/molniya/molniya-boot-backend.sh
 #
 # ---------------------------------------------------------------------------
 # THERE IS NO STORED STATE. All three answers are derived from three facts:
@@ -60,22 +60,22 @@
 
 set -euo pipefail
 
-SELECTOR_MNT="${KOSMOS_SELECTOR_MNT:-/boot/selector}"
-AUTOBOOT="${KOSMOS_AUTOBOOT:-$SELECTOR_MNT/autoboot.txt}"
-SLOTMAP="${KOSMOS_SLOTMAP:-/etc/kosmos/slots.conf}"
-SLOT_IDENTITY="${KOSMOS_SLOT_IDENTITY:-/usr/local/lib/kosmos/slot-identity.sh}"
-VCMAILBOX="${KOSMOS_VCMAILBOX:-vcmailbox}"
+SELECTOR_MNT="${MOLNIYA_SELECTOR_MNT:-/boot/selector}"
+AUTOBOOT="${MOLNIYA_AUTOBOOT:-$SELECTOR_MNT/autoboot.txt}"
+SLOTMAP="${MOLNIYA_SLOTMAP:-/etc/molniya/slots.conf}"
+SLOT_IDENTITY="${MOLNIYA_SLOT_IDENTITY:-/usr/local/lib/molniya/slot-identity.sh}"
+VCMAILBOX="${MOLNIYA_VCMAILBOX:-vcmailbox}"
 
 # Set to 1 to skip the ro/rw remount dance -- for running against a fixture
 # directory off-target, where the selector is not a mount at all.
-NO_REMOUNT="${KOSMOS_SELECTOR_NO_REMOUNT:-0}"
+NO_REMOUNT="${MOLNIYA_SELECTOR_NO_REMOUNT:-0}"
 
 # Path of the in-progress selector rewrite, global only so commit_swap's EXIT
 # trap can name it without a double-quoted trap. Never read outside it.
 TMP_SELECTOR=""
 
-die() { echo "kosmos-boot-backend: $*" >&2; exit 1; }
-warn() { echo "kosmos-boot-backend: $*" >&2; }
+die() { echo "molniya-boot-backend: $*" >&2; exit 1; }
+warn() { echo "molniya-boot-backend: $*" >&2; }
 
 # ---------------------------------------------------------------------------
 # Facts
@@ -163,16 +163,16 @@ identity_get() {
 bootname_partition() {
     local bootname="$1"
     case "$bootname" in
-        A) slotmap_get KOSMOS_SLOT_A_BOOT ;;
-        B) slotmap_get KOSMOS_SLOT_B_BOOT ;;
+        A) slotmap_get MOLNIYA_SLOT_A_BOOT ;;
+        B) slotmap_get MOLNIYA_SLOT_B_BOOT ;;
         *) return 1 ;;
     esac
 }
 
 partition_bootname() {
     local partition="$1" a b
-    a=$(slotmap_get KOSMOS_SLOT_A_BOOT) || return 1
-    b=$(slotmap_get KOSMOS_SLOT_B_BOOT) || return 1
+    a=$(slotmap_get MOLNIYA_SLOT_A_BOOT) || return 1
+    b=$(slotmap_get MOLNIYA_SLOT_B_BOOT) || return 1
     case "$partition" in
         "$a") echo A ;;
         "$b") echo B ;;
@@ -349,7 +349,7 @@ set_state() {
 
 usage() {
     cat >&2 <<-'EOF'
-	usage: kosmos-boot-backend.sh <verb> [args]
+	usage: molniya-boot-backend.sh <verb> [args]
 
 	  get-primary
 	  set-primary <bootname>

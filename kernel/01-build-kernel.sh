@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================================
-# KosmOS Kernel Build Script for Raspberry Pi 5
+# MolniyaOS Kernel Build Script for Raspberry Pi 5
 # ============================================================================
 # Run this inside your Debian ARM64 UTM VM.
 #
@@ -44,10 +44,10 @@ SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Change these if you want a different kernel branch or build directory
 KERNEL_URL="https://github.com/raspberrypi/linux.git"
 KERNEL_BRANCH="rpi-6.12.y"       # Latest Pi LTS branch with RT support
-BUILD_DIR="$HOME/kosmos"         # scratch workspace: kernel source + artifacts
+BUILD_DIR="$HOME/molniya"         # scratch workspace: kernel source + artifacts
 KERNEL_DIR="$BUILD_DIR/linux"        # kernel *source* tree (cloned here)
 # The staging directory and the tarball are package-kernel.sh's business; it
-# derives both from BUILD_DIR, which is passed to it as KOSMOS_BUILD_DIR.
+# derives both from BUILD_DIR, which is passed to it as MOLNIYA_BUILD_DIR.
 
 # Exact commit to build. Empty means "tip of $KERNEL_BRANCH", which is the
 # long-standing behaviour and which means two builds weeks apart are not the same
@@ -113,7 +113,7 @@ verify_critical_config() {
         echo ""
         echo "ERROR: required options are missing from .config ($when)."
         echo "       Building now would produce a kernel that does not do what"
-        echo "       KosmOS claims, and nothing would tell you until after the"
+        echo "       MolniyaOS claims, and nothing would tell you until after the"
         echo "       install and reboot."
         echo ""
         echo "       Inspect with:  grep -E 'PREEMPT|CONFIG_HZ|IKCONFIG|VCIO|WDT' .config"
@@ -124,17 +124,17 @@ verify_critical_config() {
 
     # A string option, so it needs its own test rather than the loop above.
     # Non-fatal: the kernel still works, it just is not identifiable.
-    if ! grep -q '^CONFIG_LOCALVERSION="-kosmos"' .config; then
+    if ! grep -q '^CONFIG_LOCALVERSION="-molniya"' .config; then
         echo ""
-        echo "       WARNING: CONFIG_LOCALVERSION is not \"-kosmos\". The build will"
+        echo "       WARNING: CONFIG_LOCALVERSION is not \"-molniya\". The build will"
         echo "                work, but uname -r will not identify this kernel as"
-        echo "                KosmOS and 02-post-install.sh will report a failed"
+        echo "                MolniyaOS and 02-post-install.sh will report a failed"
         echo "                version check."
     fi
 }
 
 echo "============================================"
-echo "  KosmOS Kernel Build for Raspberry Pi 5"
+echo "  MolniyaOS Kernel Build for Raspberry Pi 5"
 echo "============================================"
 echo "Branch:     $KERNEL_BRANCH"
 echo "Build dir:  $BUILD_DIR"
@@ -225,7 +225,7 @@ echo "[4/7] Merging SDR/RT config fragment..."
 # The fragment ships next to this script, so locate it relative to the script
 # itself rather than relative to BUILD_DIR. BUILD_DIR is a scratch workspace
 # (that is where the kernel source gets cloned); it is not where the repo
-# lives. Deriving the path from $HOME/kosmos meant the script only worked if
+# lives. Deriving the path from $HOME/molniya meant the script only worked if
 # you had copied the repo to exactly that directory, and failed here otherwise.
 FRAGMENT_PATH="$SELF_DIR/sdr-rt.config"
 
@@ -316,7 +316,7 @@ if [ ! -f "$SELF_DIR/package-kernel.sh" ]; then
     exit 1
 fi
 
-KOSMOS_BUILD_DIR="$BUILD_DIR" bash "$SELF_DIR/package-kernel.sh" "$KERNEL_DIR"
+MOLNIYA_BUILD_DIR="$BUILD_DIR" bash "$SELF_DIR/package-kernel.sh" "$KERNEL_DIR"
 
 if [ -z "$KERNEL_COMMIT" ]; then
     echo ""

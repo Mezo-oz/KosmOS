@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================================
-# KosmOS — build a signed RAUC update bundle (Phase 4d)
+# MolniyaOS — build a signed RAUC update bundle (Phase 4d)
 # ============================================================================
 #   ./build-bundle.sh --image <img> --version <v> --out <bundle.raucb>
 #
 #   --image <path>     image to take slot A's filesystems from
 #   --version <v>      bundle version, e.g. 0.9.0
 #   --out <path>       where to write the .raucb
-#   --cert <path>      signing certificate  (or KOSMOS_SIGN_CERT)
-#   --key <path>       signing private key  (or KOSMOS_SIGN_KEY)
-#   --keyring <path>   CA cert to verify the result (or KOSMOS_RAUC_CERT)
+#   --cert <path>      signing certificate  (or MOLNIYA_SIGN_CERT)
+#   --key <path>       signing private key  (or MOLNIYA_SIGN_KEY)
+#   --keyring <path>   CA cert to verify the result (or MOLNIYA_RAUC_CERT)
 #   --description <s>  free text recorded in the manifest
 #
 # Prints the bundle path on stdout. Everything else is stderr (standard 8).
@@ -38,7 +38,7 @@
 # under a directory this script creates and removes on EXIT -- including on
 # failure, which is why the trap is installed before the file is written.
 #
-# Point KOSMOS_BUNDLE_TMP at a tmpfs to keep the plaintext key off disk
+# Point MOLNIYA_BUNDLE_TMP at a tmpfs to keep the plaintext key off disk
 # entirely; /dev/shm is the usual answer and is the default when it exists.
 #
 # ---------------------------------------------------------------------------
@@ -55,11 +55,11 @@ set -euo pipefail
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LAYOUT="$SELF_DIR/layout.sh"
-CACHE="${KOSMOS_BUILD_CACHE:-/var/tmp/kosmos-build}"
+CACHE="${MOLNIYA_BUILD_CACHE:-/var/tmp/molniya-build}"
 
-SIGN_CERT="${KOSMOS_SIGN_CERT:-}"
-SIGN_KEY="${KOSMOS_SIGN_KEY:-}"
-KEYRING="${KOSMOS_RAUC_CERT:-}"
+SIGN_CERT="${MOLNIYA_SIGN_CERT:-}"
+SIGN_KEY="${MOLNIYA_SIGN_KEY:-}"
+KEYRING="${MOLNIYA_RAUC_CERT:-}"
 
 IMG=""
 VERSION=""
@@ -127,13 +127,13 @@ main() {
         esac
     done
 
-    IMG="${IMG:-$CACHE/kosmos-rpi5.img}"
+    IMG="${IMG:-$CACHE/molniya-rpi5.img}"
     [ -f "$IMG" ] || die "$IMG: no such image"
     [ -n "$VERSION" ] || die "--version is required (it is what rauc status reports)"
     [ -n "$OUT" ] || die "--out is required"
-    [ -n "$SIGN_CERT" ] || die "no signing certificate: --cert or KOSMOS_SIGN_CERT.
+    [ -n "$SIGN_CERT" ] || die "no signing certificate: --cert or MOLNIYA_SIGN_CERT.
   Create one with: image/rauc/make-keys.sh sign <ca-dir> <out-dir>"
-    [ -n "$SIGN_KEY" ] || die "no signing key: --key or KOSMOS_SIGN_KEY"
+    [ -n "$SIGN_KEY" ] || die "no signing key: --key or MOLNIYA_SIGN_KEY"
     [ -f "$SIGN_CERT" ] || die "$SIGN_CERT: not a file"
     [ -f "$SIGN_KEY" ] || die "$SIGN_KEY: not a file"
     [ ! -e "$OUT" ] || die "$OUT exists; refusing to overwrite a bundle"
@@ -142,16 +142,16 @@ main() {
   just a runtime: apt-get install rauc  (trixie ships 1.13, matching the image)"
 
     local compatible
-    compatible="$(slotmap_get KOSMOS_COMPATIBLE)"
-    [ -n "$compatible" ] || die "layout.sh slotmap reports no KOSMOS_COMPATIBLE"
+    compatible="$(slotmap_get MOLNIYA_COMPATIBLE)"
+    [ -n "$compatible" ] || die "layout.sh slotmap reports no MOLNIYA_COMPATIBLE"
 
     # 0700 before anything is written into it, so the decrypted key is never
     # briefly world-readable.
-    local tmpbase="${KOSMOS_BUNDLE_TMP:-}"
+    local tmpbase="${MOLNIYA_BUNDLE_TMP:-}"
     if [ -z "$tmpbase" ]; then
         if [ -d /dev/shm ]; then tmpbase=/dev/shm; else tmpbase="${TMPDIR:-/tmp}"; fi
     fi
-    WORK="$(mktemp -d "$tmpbase/kosmos-bundle.XXXXXX")"
+    WORK="$(mktemp -d "$tmpbase/molniya-bundle.XXXXXX")"
     chmod 700 "$WORK"
     mkdir -p "$WORK/in" "$WORK/mnt"
 
@@ -165,7 +165,7 @@ main() {
     # `openssl pkey` prompts if the key is encrypted and is a no-op copy if it
     # is not, so one path covers both and neither needs a flag from the caller.
     #
-    # The passphrase comes from KOSMOS_SIGN_PASS when it is set, via `env:` and
+    # The passphrase comes from MOLNIYA_SIGN_PASS when it is set, via `env:` and
     # not `pass:` -- `pass:` puts the secret in argv where `ps` can read it.
     #
     # WITHOUT IT, AND WITH NO TERMINAL, THIS IS CHECKED RATHER THAN ATTEMPTED.
@@ -175,15 +175,15 @@ main() {
     # hangs is worse than one that fails: it holds a loop device and a
     # plaintext key while it waits, and CI reports nothing at all.
     local -a passin=()
-    if [ -n "${KOSMOS_SIGN_PASS:-}" ]; then
-        passin=(-passin env:KOSMOS_SIGN_PASS)
+    if [ -n "${MOLNIYA_SIGN_PASS:-}" ]; then
+        passin=(-passin env:MOLNIYA_SIGN_PASS)
     elif ! [ -t 0 ]; then
         # An unencrypted key needs no passphrase, so only refuse if it is one.
         case "$(head -1 "$SIGN_KEY")" in
             *ENCRYPTED*)
                 die "the signing key is encrypted and there is no terminal to
   ask on. openssl reads passphrases from /dev/tty, so piping one to this
-  script's stdin will hang rather than work. Set KOSMOS_SIGN_PASS instead." ;;
+  script's stdin will hang rather than work. Set MOLNIYA_SIGN_PASS instead." ;;
         esac
     fi
     ( umask 077; openssl pkey -in "$SIGN_KEY" "${passin[@]}" -out "$WORK/sign.key.pem" ) ||
@@ -196,8 +196,8 @@ main() {
     note "$LOOPDEV"
 
     local proot pboot
-    proot="$(slotmap_get KOSMOS_SLOT_A_ROOT)"
-    pboot="$(slotmap_get KOSMOS_SLOT_A_BOOT)"
+    proot="$(slotmap_get MOLNIYA_SLOT_A_ROOT)"
+    pboot="$(slotmap_get MOLNIYA_SLOT_A_BOOT)"
 
     step "payload — slot A rootfs (p$proot) and bootfs (p$pboot) as tars"
     sudo mkdir -p "$WORK/mnt/root" "$WORK/mnt/boot"

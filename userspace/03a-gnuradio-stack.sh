@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================================
-# KosmOS 03a — GNU Radio + gr-osmosdr + SoapySDR
+# MolniyaOS 03a — GNU Radio + gr-osmosdr + SoapySDR
 # ============================================================================
 # Run this ON THE PI. Installs the DSP framework and the hardware abstraction
 # layer from the distribution archive, at pinned versions.
 #
 # WHY APT AND NOT A SOURCE BUILD:
-#   Every other build in KosmOS is from source, deliberately. GNU Radio is the
+#   Every other build in MolniyaOS is from source, deliberately. GNU Radio is the
 #   exception, for three reasons:
 #
 #     1. Cost. GNU Radio's dependency chain (Boost, volk, gmp, thrift, Qt,
@@ -57,10 +57,10 @@ set -euo pipefail
 #   and rejects anything else. These pins were read from the archive rather than
 #   from the Pi, so a first run may still find a revision that is neither; the
 #   default is then a loud warning and the candidate version, recorded in the
-#   manifest. Set KOSMOS_STRICT_PINS=1 to make that an error instead.
-KOSMOS_STRICT_PINS="${KOSMOS_STRICT_PINS:-0}"
+#   manifest. Set MOLNIYA_STRICT_PINS=1 to make that an error instead.
+MOLNIYA_STRICT_PINS="${MOLNIYA_STRICT_PINS:-0}"
 
-MANIFEST="/usr/local/share/kosmos/build-manifest.txt"
+MANIFEST="/usr/local/share/molniya/build-manifest.txt"
 
 # Resolve the pin set for the running suite. Parsed rather than sourced: reading
 # a value out of /etc/os-release does not require executing it in this shell.
@@ -123,10 +123,10 @@ apt_install_pinned() {
             sudo apt-get install -y "$pkg=$cand"
             ;;
         *)
-            if [ "$KOSMOS_STRICT_PINS" = "1" ]; then
+            if [ "$MOLNIYA_STRICT_PINS" = "1" ]; then
                 echo "ERROR: $pkg pin mismatch — pinned $want, archive offers $cand" >&2
                 echo "       Either update the pin in this script after reading the" >&2
-                echo "       changelog, or re-run with KOSMOS_STRICT_PINS=0 to take" >&2
+                echo "       changelog, or re-run with MOLNIYA_STRICT_PINS=0 to take" >&2
                 echo "       the archive's version and have it recorded instead." >&2
                 exit 1
             fi
@@ -165,15 +165,15 @@ if [ -z "$PIN_GNURADIO" ]; then
     echo "  pin set."
 fi
 echo ""
-# KOSMOS_ASSUME_YES exists for the image builder, which runs this in a chroot
+# MOLNIYA_ASSUME_YES exists for the image builder, which runs this in a chroot
 # with no tty. Without it `read` gets EOF, INSTALL_GR stays empty, the case below
 # falls to its default and the script exits 3 -- which the sequencer treats as a
 # deliberate decline and reports as SKIPPED, so the build completes "successfully"
 # having installed nothing. Explicit opt-in, and no default: an unset variable
 # still prompts, so running this by hand is unchanged.
-if [ "${KOSMOS_ASSUME_YES:-0}" = "1" ]; then
+if [ "${MOLNIYA_ASSUME_YES:-0}" = "1" ]; then
     INSTALL_GR=y
-    echo "  KOSMOS_ASSUME_YES=1 — proceeding without prompting."
+    echo "  MOLNIYA_ASSUME_YES=1 — proceeding without prompting."
 else
     read -r -p "Install GNU Radio, gr-osmosdr and SoapySDR? (y/N): " INSTALL_GR
 fi

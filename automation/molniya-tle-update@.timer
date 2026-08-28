@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================================
-# KosmOS — schedule the TLE refresh
+# MolniyaOS — schedule the TLE refresh
 # ============================================================================
 # Install with automation/install-tle-timer.sh. This is the unit you enable;
-# it activates kosmos-tle-update@%i.service on the same instance name.
+# it activates molniya-tle-update@%i.service on the same instance name.
 #
-#   sudo systemctl enable --now kosmos-tle-update@homelab.timer
-#   systemctl list-timers kosmos-tle-update@homelab.timer
+#   sudo systemctl enable --now molniya-tle-update@homelab.timer
+#   systemctl list-timers molniya-tle-update@homelab.timer
 #
 # TWICE A DAY, AND NO MORE:
 #   CelesTrak publishes daily and asks not to be polled hard. Twice a day is
@@ -31,11 +31,11 @@
 # ============================================================================
 
 [Unit]
-Description=KosmOS: twice-daily TLE refresh for %i
-Documentation=https://github.com/Mezo-oz/KosmOS
+Description=MolniyaOS: twice-daily TLE refresh for %i
+Documentation=https://github.com/Mezo-oz/MolniyaOS
 
 [Timer]
-Unit=kosmos-tle-update@%i.service
+Unit=molniya-tle-update@%i.service
 OnCalendar=*-*-* 05,17:17:00
 RandomizedDelaySec=900
 Persistent=true

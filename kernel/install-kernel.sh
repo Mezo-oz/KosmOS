@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================================
-# KosmOS Kernel Install Script — Run this ON the Raspberry Pi 5
+# MolniyaOS Kernel Install Script — Run this ON the Raspberry Pi 5
 # ============================================================================
 # This script takes the kernel package built in your VM and installs it
 # onto the Pi's SD card. It's non-destructive: it backs up your existing
@@ -15,23 +15,23 @@
 #   ├── kernel_2712.img       ← stock kernel, untouched
 #   ├── bcm2712*.dtb          ← stock device trees, untouched
 #   ├── overlays/             ← stock overlays, untouched
-#   └── kosmos/               ← everything of ours lives here
-#       ├── kernel-kosmos.img
-#       ├── cmdline.txt       ← stock cmdline + KosmOS additions
+#   └── molniya/               ← everything of ours lives here
+#       ├── kernel-molniya.img
+#       ├── cmdline.txt       ← stock cmdline + MolniyaOS additions
 #       ├── bcm2712*.dtb
 #       └── overlays/
 #
 #   Module Directory (/lib/modules/):
 #   ├── <version>/            ← stock kernel modules (untouched)
-#   └── <version>-kosmos+/    ← our modules (added)
+#   └── <version>-molniya+/    ← our modules (added)
 #
 # THE SAFETY NET:
-#   The firmware's os_prefix mechanism points at kosmos/ for the kernel, device
+#   The firmware's os_prefix mechanism points at molniya/ for the kernel, device
 #   trees, overlays and command line. Every stock file stays byte-identical, so
 #   reverting is genuinely a one-step operation and the stock kernel boots
 #   against its own device trees rather than ours.
 #
-#     1. Delete the KosmOS block from config.txt (or pull the SD card and edit
+#     1. Delete the MolniyaOS block from config.txt (or pull the SD card and edit
 #        it on another machine if the Pi will not boot)
 #     2. Reboot — the firmware falls back to the stock kernel
 #
@@ -49,9 +49,9 @@ NC='\033[0m' # No Color
 
 # === CONFIGURATION ===
 
-# Subdirectory of the boot partition holding everything KosmOS boots.
+# Subdirectory of the boot partition holding everything MolniyaOS boots.
 # Also the value given to os_prefix (with a trailing slash added).
-OS_PREFIX_DIR="kosmos"
+OS_PREFIX_DIR="molniya"
 
 # CPUs to run in full-dynticks mode, as a kernel cpulist ("1-3", "2,3", or ""
 # to disable). CPU 0 must be excluded to act as the housekeeping core; the
@@ -82,7 +82,7 @@ NOHZ_FULL_CPUS="${NOHZ_FULL_CPUS-1-3}"
 
 # === Sanity Checks ===
 echo -e "${GREEN}============================================${NC}"
-echo -e "${GREEN}  KosmOS Kernel Installer for Pi 5${NC}"
+echo -e "${GREEN}  MolniyaOS Kernel Installer for Pi 5${NC}"
 echo -e "${GREEN}============================================${NC}"
 echo ""
 
@@ -106,10 +106,10 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 echo "Package directory: $SCRIPT_DIR"
 
 # Check required files exist
-if [ ! -f "$SCRIPT_DIR/boot/kernel-kosmos.img" ]; then
-    echo -e "${RED}ERROR: kernel-kosmos.img not found in $SCRIPT_DIR/boot/${NC}"
+if [ ! -f "$SCRIPT_DIR/boot/kernel-molniya.img" ]; then
+    echo -e "${RED}ERROR: kernel-molniya.img not found in $SCRIPT_DIR/boot/${NC}"
     echo "       Make sure you extracted the tarball correctly:"
-    echo "       mkdir ~/kosmos-kernel && tar xzf kosmos-kernel-*.tar.gz -C ~/kosmos-kernel"
+    echo "       mkdir ~/molniya-kernel && tar xzf molniya-kernel-*.tar.gz -C ~/molniya-kernel"
     exit 1
 fi
 
@@ -182,7 +182,7 @@ echo "       Backup saved to: $BACKUP_DIR"
 
 # === Step 2: Install Kernel Image, DTBs and Overlays Into Our Own Directory ===
 #
-# Everything KosmOS loads goes under $BOOT_DIR/$OS_PREFIX_DIR/ and nothing in the
+# Everything MolniyaOS loads goes under $BOOT_DIR/$OS_PREFIX_DIR/ and nothing in the
 # stock boot directory is modified except config.txt.
 #
 # WHY THIS CHANGED: the previous version copied our kernel image next to the
@@ -203,18 +203,18 @@ echo "       Backup saved to: $BACKUP_DIR"
 echo ""
 echo -e "${YELLOW}[2/5] Installing kernel, DTBs and overlays to $OS_PREFIX_DIR/...${NC}"
 
-KOSMOS_DIR="$BOOT_DIR/$OS_PREFIX_DIR"
-mkdir -p "$KOSMOS_DIR/overlays"
+MOLNIYA_DIR="$BOOT_DIR/$OS_PREFIX_DIR"
+mkdir -p "$MOLNIYA_DIR/overlays"
 
-cp "$SCRIPT_DIR/boot/kernel-kosmos.img" "$KOSMOS_DIR/"
-echo "       kernel-kosmos.img"
+cp "$SCRIPT_DIR/boot/kernel-molniya.img" "$MOLNIYA_DIR/"
+echo "       kernel-molniya.img"
 
-cp "$SCRIPT_DIR/boot/bcm2712"*.dtb "$KOSMOS_DIR/"
-echo "       $(find "$KOSMOS_DIR" -maxdepth 1 -name 'bcm2712*.dtb' | wc -l) device tree blob(s)"
+cp "$SCRIPT_DIR/boot/bcm2712"*.dtb "$MOLNIYA_DIR/"
+echo "       $(find "$MOLNIYA_DIR" -maxdepth 1 -name 'bcm2712*.dtb' | wc -l) device tree blob(s)"
 
 if [ -d "$SCRIPT_DIR/boot/overlays" ]; then
-    cp "$SCRIPT_DIR/boot/overlays/"*.dtbo "$KOSMOS_DIR/overlays/" 2>/dev/null || true
-    echo "       $(find "$KOSMOS_DIR/overlays" -maxdepth 1 -name '*.dtbo' 2>/dev/null | wc -l) overlay(s)"
+    cp "$SCRIPT_DIR/boot/overlays/"*.dtbo "$MOLNIYA_DIR/overlays/" 2>/dev/null || true
+    echo "       $(find "$MOLNIYA_DIR/overlays" -maxdepth 1 -name '*.dtbo' 2>/dev/null | wc -l) overlay(s)"
 fi
 
 # === Step 3: Build Our Own cmdline.txt ===
@@ -222,7 +222,7 @@ fi
 # os_prefix applies to cmdline.txt too, so the firmware will look for
 # $OS_PREFIX_DIR/cmdline.txt. It MUST exist: without a command line the kernel
 # gets no root= and will not boot. Start from the stock one so root=, rootfstype=
-# and the rest carry over unchanged, then append only what KosmOS adds.
+# and the rest carry over unchanged, then append only what MolniyaOS adds.
 echo ""
 echo -e "${YELLOW}[3/5] Building $OS_PREFIX_DIR/cmdline.txt...${NC}"
 
@@ -234,7 +234,7 @@ if [ ! -f "$BOOT_DIR/cmdline.txt" ]; then
 fi
 
 cp "$BOOT_DIR/cmdline.txt" "$BACKUP_DIR/cmdline.txt.stock"
-KOSMOS_CMDLINE=$(tr -d '\n' < "$BOOT_DIR/cmdline.txt")
+MOLNIYA_CMDLINE=$(tr -d '\n' < "$BOOT_DIR/cmdline.txt")
 
 # Full dynticks. CONFIG_NO_HZ_FULL only does anything if the CPUs to run
 # tickless are named here, so without this the option was compiled and inert --
@@ -245,14 +245,14 @@ KOSMOS_CMDLINE=$(tr -d '\n' < "$BOOT_DIR/cmdline.txt")
 # kernel. rcu_nocbs matches nohz_full so RCU callbacks are also offloaded off the
 # isolated cores, which is what makes the latency benefit actually show up.
 if [ -n "$NOHZ_FULL_CPUS" ]; then
-    KOSMOS_CMDLINE="$KOSMOS_CMDLINE nohz_full=$NOHZ_FULL_CPUS rcu_nocbs=$NOHZ_FULL_CPUS"
+    MOLNIYA_CMDLINE="$MOLNIYA_CMDLINE nohz_full=$NOHZ_FULL_CPUS rcu_nocbs=$NOHZ_FULL_CPUS"
     echo "       Added: nohz_full=$NOHZ_FULL_CPUS rcu_nocbs=$NOHZ_FULL_CPUS"
 else
     echo "       NOHZ_FULL_CPUS empty — no dynticks args added"
 fi
 
-printf '%s\n' "$KOSMOS_CMDLINE" > "$KOSMOS_DIR/cmdline.txt"
-echo "       Wrote $KOSMOS_DIR/cmdline.txt"
+printf '%s\n' "$MOLNIYA_CMDLINE" > "$MOLNIYA_DIR/cmdline.txt"
+echo "       Wrote $MOLNIYA_DIR/cmdline.txt"
 
 # === Step 4: Install Kernel Modules ===
 # Modules go under /lib/modules/<kernel-version>/
@@ -286,15 +286,15 @@ echo -e "${YELLOW}[5/5] Updating boot configuration...${NC}"
 echo "       Validating payload before arming config.txt..."
 
 MISSING=""
-[ -f "$KOSMOS_DIR/kernel-kosmos.img" ] || MISSING="$MISSING kernel-kosmos.img"
-[ -f "$KOSMOS_DIR/cmdline.txt" ]       || MISSING="$MISSING cmdline.txt"
-ls "$KOSMOS_DIR"/bcm2712*.dtb >/dev/null 2>&1 || MISSING="$MISSING bcm2712*.dtb"
-grep -q "root=" "$KOSMOS_DIR/cmdline.txt" 2>/dev/null || MISSING="$MISSING root=-in-cmdline"
+[ -f "$MOLNIYA_DIR/kernel-molniya.img" ] || MISSING="$MISSING kernel-molniya.img"
+[ -f "$MOLNIYA_DIR/cmdline.txt" ]       || MISSING="$MISSING cmdline.txt"
+ls "$MOLNIYA_DIR"/bcm2712*.dtb >/dev/null 2>&1 || MISSING="$MISSING bcm2712*.dtb"
+grep -q "root=" "$MOLNIYA_DIR/cmdline.txt" 2>/dev/null || MISSING="$MISSING root=-in-cmdline"
 
 if [ -n "$MISSING" ]; then
     echo -e "${RED}ERROR: refusing to modify config.txt. Missing:$MISSING${NC}"
     echo "       Nothing has been armed, so the system still boots as before."
-    echo "       Files staged in $KOSMOS_DIR can be removed safely."
+    echo "       Files staged in $MOLNIYA_DIR can be removed safely."
     exit 1
 fi
 echo "       Payload complete."
@@ -328,7 +328,7 @@ else
     # reverted while still booting the custom kernel. The command lives in the
     # script's closing output and in the README instead.
     cat >> "$BOOT_DIR/config.txt" <<EOF
-# --- KosmOS custom kernel -----------------------------------------------------
+# --- MolniyaOS custom kernel -----------------------------------------------------
 # Loads the kernel, device trees, overlays and cmdline.txt from $OS_PREFIX_DIR/.
 # Stock kernel files are untouched.
 #
@@ -336,9 +336,9 @@ else
 # then reboot. The stock kernel loads automatically.
 [pi5]
 os_prefix=$OS_PREFIX_DIR/
-kernel=kernel-kosmos.img
+kernel=kernel-molniya.img
 [all]
-# --- end KosmOS ---------------------------------------------------------------
+# --- end MolniyaOS ---------------------------------------------------------------
 EOF
     echo "       Armed: os_prefix=$OS_PREFIX_DIR/"
 fi
@@ -350,34 +350,34 @@ echo -e "${GREEN}  INSTALLATION COMPLETE${NC}"
 echo -e "${GREEN}============================================${NC}"
 echo ""
 echo "  Kernel:     $KERNEL_VERSION"
-echo "  Boot dir:   $KOSMOS_DIR/  (stock boot files untouched)"
+echo "  Boot dir:   $MOLNIYA_DIR/  (stock boot files untouched)"
 echo "  Modules:    /lib/modules/$KERNEL_VERSION/"
 echo "  Backup:     $BACKUP_DIR/"
-echo "  Cmdline:    $(cat "$KOSMOS_DIR/cmdline.txt")"
+echo "  Cmdline:    $(cat "$MOLNIYA_DIR/cmdline.txt")"
 echo ""
 echo "  To boot into the new kernel:"
 echo "    sudo reboot"
 echo ""
 echo "  After reboot, verify with:"
-echo "    uname -r                       # should contain 'kosmos'"
+echo "    uname -r                       # should contain 'molniya'"
 echo "    cat /sys/kernel/realtime       # should show 1"
 echo "    cat /sys/devices/system/cpu/nohz_full   # should show ${NOHZ_FULL_CPUS:-'(none)'}"
 echo "    sudo modprobe ax25             # should load without errors"
 echo ""
 echo -e "  ${YELLOW}TO REVERT — from a working SSH session:${NC}"
-echo "    sudo sed -i '/--- KosmOS custom kernel/,/--- end KosmOS/d' $BOOT_DIR/config.txt"
+echo "    sudo sed -i '/--- MolniyaOS custom kernel/,/--- end MolniyaOS/d' $BOOT_DIR/config.txt"
 echo "    sudo reboot"
 echo ""
 echo -e "  ${YELLOW}TO REVERT — if the Pi will not boot:${NC}"
 echo "    1. Pull the SD card, mount the boot partition on another computer"
-echo "    2. Delete the KosmOS block from config.txt (between the --- markers)"
+echo "    2. Delete the MolniyaOS block from config.txt (between the --- markers)"
 echo "    3. Re-insert and power on — the stock kernel loads automatically"
 echo ""
 echo "    Stock config.txt is also saved at:"
 echo "      $BACKUP_DIR/config.txt"
 echo ""
 echo -e "  ${YELLOW}TO SWITCH KERNELS for the RT benchmark:${NC}"
-echo "    Comment out the two directives to boot stock, uncomment to boot KosmOS."
+echo "    Comment out the two directives to boot stock, uncomment to boot MolniyaOS."
 echo "    Nothing else differs between the two boots — that is what makes the"
 echo "    A/B comparison valid."
 echo ""

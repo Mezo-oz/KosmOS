@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================================
-# KosmOS Post-Install — sequencer
+# MolniyaOS Post-Install — sequencer
 # ============================================================================
 # Run this ON THE PI after rebooting into the custom kernel.
 #

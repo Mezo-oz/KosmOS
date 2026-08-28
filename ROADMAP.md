@@ -1,15 +1,18 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
-# KosmOS — Project Roadmap & Vision
+# MolniyaOS — Project Roadmap & Vision
 
-*Naming settled 2026-07-29: it's **KosmOS** with a K — matches the existing repo
-(Mezo-oz/KosmOS), the committed artifacts (kernel-kosmos.img, `-kosmos`
-localversion), and the Cyrillic-flavoured "Kosmos" fits the SATCOM angle.*
+*Renamed 2026-08-28: it's **MolniyaOS** (Молния, "lightning") — after the Soviet
+Molniya communications satellites and the Molniya orbit named for them. The
+previous name, KosmOS (settled 2026-07-29), collided with another Linux distro;
+collision checks on 2026-08-28 found MolniyaOS clean on GitHub, DistroWatch, and
+general search. Artifact names stay lowercase by convention: kernel-molniya.img,
+`-molniya` localversion, gr-molniya. GitHub repo renamed (auto-redirects).*
 
 ## Hardware Topology (permanent, decided 2026-07-29)
 
 Two Raspberry Pi 5s, with a deliberate and permanent split of roles:
 
-- **pi-server — the dedicated KosmOS dev / break-fix box.** All kernel work
+- **pi-server — the dedicated MolniyaOS dev / break-fix box.** All kernel work
   happens here: custom-kernel swaps, `os_prefix` installs, benchmark reboots,
   crashes, and full reflashes are all *expected and welcome* on this machine.
   It runs no production service, so there is **no reboot-window constraint** —
@@ -19,7 +22,7 @@ Two Raspberry Pi 5s, with a deliberate and permanent split of roles:
 
 - **altai — the permanent production host.** Runs the Amnezia work, and will run
   the `tor-services` Docker stack (an obfs4 bridge + snowflake proxy +
-  watchtower). Stable, always-on, not to be disrupted for KosmOS.
+  watchtower). Stable, always-on, not to be disrupted for MolniyaOS.
   **The production bridge does not return to pi-server** — this is settled, not
   provisional.
 
@@ -40,23 +43,23 @@ can reboot between kernels at will and reflash if an install goes wrong. A host
 also running a live Tor bridge is the opposite of that. Separating them removes
 the only scheduling constraint the benchmark had.
 
-**Relationship to the Phase 3c Tor bridge module (below):** KosmOS *ships* an
+**Relationship to the Phase 3c Tor bridge module (below):** MolniyaOS *ships* an
 optional bridge module as a distro feature. That is entirely separate from the
 production bridge on altai. The module is dogfooded later with a **throwaway
 test identity** — never the live bridge's keys. (Repo docs stay generic about
 the production bridge: no WAN IP, email, or fingerprint in any committed file.)
 
-## Identity: What KosmOS Is (and Isn't)
+## Identity: What MolniyaOS Is (and Isn't)
 
-**KosmOS is a ground-up, SATCOM-focused Linux distribution built for the Raspberry Pi 5.**
+**MolniyaOS is a ground-up, SATCOM-focused Linux distribution built for the Raspberry Pi 5.**
 
 The existing player in this space is DragonOS — a Lubuntu-based distro that ships as
 a pre-built ISO with every SDR tool imaginable pre-installed. DragonOS is the "Kali
 Linux of SDR": boot it up, everything works, you don't know how any of it was built.
 
-KosmOS takes the opposite philosophy:
+MolniyaOS takes the opposite philosophy:
 
-| | DragonOS | KosmOS |
+| | DragonOS | MolniyaOS |
 |---|---------|--------|
 | **Base** | Lubuntu (stock kernel) | Custom RT kernel built from source |
 | **Architecture** | x86_64 primary, Pi secondary | ARM64/Pi 5 native, built for the edge |
@@ -66,16 +69,16 @@ KosmOS takes the opposite philosophy:
 | **RT kernel** | No (stock Ubuntu kernel) | Yes (PREEMPT_RT, 1000Hz) |
 | **Field deployment** | Desktop/laptop focused | Pi 5 portable kit with battery + WiFi AP |
 
-**The pitch:** KosmOS is what you'd build if you were setting up a SATCOM ground
+**The pitch:** MolniyaOS is what you'd build if you were setting up a SATCOM ground
 station from bare metal — custom kernel tuned for real-time RF processing, a curated
 toolkit focused on satellite communications, and a deployment model designed for
 portable field work on ARM64 hardware.
 
 ### Positioning: Appliance, Not Toolbox
 
-KosmOS is **not** "DragonOS minus tools" — that would be a learning project, not a
-product. KosmOS is an **autonomous SATCOM ground station appliance for ARM64**.
-DragonOS hands you a workshop; KosmOS hands you a working instrument: flash the
+MolniyaOS is **not** "DragonOS minus tools" — that would be a learning project, not a
+product. MolniyaOS is an **autonomous SATCOM ground station appliance for ARM64**.
+DragonOS hands you a workshop; MolniyaOS hands you a working instrument: flash the
 image, give it your coordinates, and it starts producing satellite imagery and
 decoded data on its own.
 
@@ -83,7 +86,7 @@ Three pillars separate this from a toy:
 
 1. **Measured RT performance** — the custom kernel is a *claim* until it's
    benchmarked against the stock kernel on identical hardware. See "Proof of
-   Claim" below. If the numbers hold, KosmOS has an engineering result nobody
+   Claim" below. If the numbers hold, MolniyaOS has an engineering result nobody
    else in this space has published. If they don't, we find out early and
    reposition honestly.
 2. **Appliance-grade automation** — Phase 3 (auto-updating TLEs, scheduled pass
@@ -97,7 +100,7 @@ Three pillars separate this from a toy:
    `02c-sdr-userspace.sh` pins all four projects to exact commits and verifies
    the checkout against the pin, hard-failing on a mismatch rather than building
    whatever a moved tag points at. Every new build script pins from line one.
-   What is built gets recorded to `/usr/local/share/kosmos/build-manifest.txt`,
+   What is built gets recorded to `/usr/local/share/molniya/build-manifest.txt`,
    so a box can be asked which revision a binary came from. Still open: the
    kernel branch itself (`rpi-6.12.y`) is a moving target — see Phase 4a.*
 
@@ -106,7 +109,7 @@ Three pillars separate this from a toy:
 ## Engineering Standards (adopted 2026-07-29)
 
 **Languages, honestly stated.** The kernel is C — but it's *upstream* C that
-KosmOS configures, patches, and compiles, not writes. KosmOS's own code is
+MolniyaOS configures, patches, and compiles, not writes. MolniyaOS's own code is
 orchestration: **bash** for build/install/automation scripts, **Python** where
 a pipeline needs real data handling (rtl_power heatmaps, pass-scheduling
 logic, dashboard backend), and **C/C++ only if/when** we write custom GNU
@@ -116,7 +119,7 @@ contracting, not brick manufacturing.
 **Adapted NASA/JPL discipline.** The famous NASA rules are JPL's "Power of
 Ten" for safety-critical flight C — the actual size rule there is *functions
 ≤ ~60 lines (one printed page)*. A 400-line-per-file cap is not NASA's rule,
-but we adopt it as house convention anyway. KosmOS rules, adapted for
+but we adopt it as house convention anyway. MolniyaOS rules, adapted for
 shell/Python:
 
 1. **≤400 lines per file** — a script that outgrows this gets split
@@ -199,7 +202,7 @@ habit. It is now a rule, because stage 4 showed what it costs when it slips.
 
 `build-image.sh --stream` writes a **gzip stream** to stdout. It also printed
 the image path there when it finished, the way `fetch-base.sh` does — and that
-appended a trailing `/var/tmp/kosmos-build/kosmos-rpi5.img` and a newline to
+appended a trailing `/var/tmp/molniya-build/molniya-rpi5.img` and a newline to
 the compressed artifact.
 
 What makes it worth a numbered rule rather than a bug fix is the failure mode.
@@ -290,7 +293,7 @@ CONFIG=$(./bench-detect-config.sh)      # prints A, B or C; non-zero if unsure
 ```
 
 **Current headroom** (re-measured 2026-08-24, after stage 4):
-`build-rootfs.sh` **399**, `kosmos-health-check.sh` **398**, `tle-updater.sh`
+`build-rootfs.sh` **399**, `molniya-health-check.sh` **398**, `tle-updater.sh`
 **397**, `run-latency-bench.sh` **396**, `assemble-image.sh` **393**,
 `install-kernel.sh` 383, `layout.sh` 381, `rtl-power-heatmap.py` **377**,
 `run-sdr-bench.sh` 367, `02c-sdr-userspace.sh` 352, `verify-image.sh` 344,
@@ -317,7 +320,7 @@ and sits at 344.
 
 ### ✅ The rule fired again, 2026-08-23 — and this time it was resisted first
 
-Adding the slot identity check took `kosmos-health-check.sh` to **437**, and the
+Adding the slot identity check took `molniya-health-check.sh` to **437**, and the
 warning written into this table one commit earlier — *the next thing you add goes
 in its own file* — is exactly what happened. Worth recording how it resolved,
 because the first instinct was wrong twice over.
@@ -377,7 +380,7 @@ catalog has no part — a protocol or format no existing block handles — or
 itself. Never rewrite existing demodulators as features (fine as private
 learning exercises), and never write a Doppler block — gr-satellites already
 provides Doppler correction. Prototype blocks in Python; port to C++ only if
-they can't keep up at full sample rate. Planned blocks live under `gr-kosmos/`
+they can't keep up at full sample rate. Planned blocks live under `gr-molniya/`
 except where noted (see Phase 2c for the independence rule on IceSickle).
 
 ---
@@ -389,7 +392,7 @@ work, so it sits with the other rules rather than at the end of the plan.*
 
 ### Openness is architectural, not a feature
 
-KosmOS is open to new satellites because of what it is built from, not because
+MolniyaOS is open to new satellites because of what it is built from, not because
 anyone added an "extensibility" feature to it:
 
 - **SoapySDR** is a hardware abstraction layer — the radio is swappable
@@ -439,25 +442,25 @@ that *deleted* `OUTPUT_DIR` from the kernel build script rather than wiring it u
 that looks like readiness is worse than nothing there at all, because it implies
 a capability nobody has tested.
 
-What KosmOS targets is **open or published interfaces**:
+What MolniyaOS targets is **open or published interfaces**:
 
 - an open-source constellation — published specs, write a profile, done
 - any commercial provider that publishes an SDR-accessible interface
 
-A closed constellation's door is theirs to open. KosmOS stays *ready* — the
+A closed constellation's door is theirs to open. MolniyaOS stays *ready* — the
 abstraction clean, the extension point documented — not *pre-plumbed*.
 
 ### Two different things get called "commercial"
 
 Separated here so they are not conflated later, in either direction.
 
-**Routing KosmOS traffic *through* a commercial terminal — already works,
+**Routing MolniyaOS traffic *through* a commercial terminal — already works,
 trivially.** A Starlink dish, an LTE modem, a hotel Ethernet port: these are
-uplinks. Plug one in and KosmOS uses it like any other network interface. That is
+uplinks. Plug one in and MolniyaOS uses it like any other network interface. That is
 Linux networking and there is nothing to build. It is also the genuinely useful
 case — a field station backhauling decoded data over whatever link exists.
 
-**Making KosmOS's SDR *be* a commercial terminal — not possible, and not
+**Making MolniyaOS's SDR *be* a commercial terminal — not possible, and not
 future-proofable.** A Starlink user terminal is proprietary phased-array hardware
 running a closed waveform in licensed spectrum. The obstacles are hardware,
 cryptography and law, in that order, and none of them is the kind of thing a
@@ -485,15 +488,15 @@ isolated before any published number is generated.
   every required file is confirmed present. Revert is a verified byte-identical
   restore.
 - [x] **Settle the tickless claim** — *done, `43d8368`.* `nohz_full` and
-  `rcu_nocbs` are appended to the KosmOS command line, default CPUs 1-3 with
+  `rcu_nocbs` are appended to the MolniyaOS command line, default CPUs 1-3 with
   CPU 0 left as housekeeping. Configurable via `NOHZ_FULL_CPUS`, which the
   benchmark matrix below relies on.
 - [x] **Make verification possible** — *done, `147fa10`.* `CONFIG_IKCONFIG` +
   `CONFIG_IKCONFIG_PROC` added, and the `/proc/config.gz` read fixed (it was
   grepping the compressed bytes, which can never match).
-- [x] **Rebuild with `CONFIG_LOCALVERSION="-kosmos"`** — *done 2026-07-31 on
+- [x] **Rebuild with `CONFIG_LOCALVERSION="-molniya"`** — *done 2026-07-31 on
   pi-server, installed and booted by 2026-08-02.* The build produced
-  **`6.12.98-kosmos+`**, the localversion took effect, and the module directories
+  **`6.12.98-molniya+`**, the localversion took effect, and the module directories
   are separated. `02a-verify-kernel.sh` now reports **7 passed, 0 failed** on the
   running kernel — the FAIL this entry used to predict was against the stock
   kernel and is gone.
@@ -525,8 +528,8 @@ Three boot configurations, so each change is attributable to exactly one cause:
 | Config | Kernel | `NOHZ_FULL_CPUS` | What it isolates |
 |---|---|---|---|
 | **A** | stock Pi kernel | n/a | baseline |
-| **B** | KosmOS (PREEMPT_RT) | `""` | RT with no core isolation |
-| **C** | KosmOS (PREEMPT_RT) | `"1-3"` | RT plus full dynticks |
+| **B** | MolniyaOS (PREEMPT_RT) | `""` | RT with no core isolation |
+| **C** | MolniyaOS (PREEMPT_RT) | `"1-3"` | RT plus full dynticks |
 
 **Report `B − A` as the PREEMPT_RT result. Report `C − B` as the isolation
 result. Never report `C − A`** — that conflates two independent changes into one
@@ -554,9 +557,9 @@ taskset -c 1-3 cyclictest -a 1-3 -t 3 -l1000000 -m -p90 -i200 -h400 -q
 ```
 
 Switching between B and C means editing `NOHZ_FULL_CPUS` in `install-kernel.sh`
-and re-running it, or editing `kosmos/cmdline.txt` on the boot partition
+and re-running it, or editing `molniya/cmdline.txt` on the boot partition
 directly. Switching between A and B/C means commenting the two directives in the
-KosmOS block of `config.txt`. Nothing else differs between any of the three
+MolniyaOS block of `config.txt`. Nothing else differs between any of the three
 boots — that is what `os_prefix` bought.
 
 ### Methodology
@@ -582,7 +585,7 @@ boots — that is what `os_prefix` bought.
 - Weakest test (passes aren't identical) but the most convincing demo
 
 **Instrumentation upgrade — the first custom GNU Radio block:**
-- [~] **`gr-kosmos` sample-discontinuity probe** — an inline block that watches
+- [~] **`gr-molniya` sample-discontinuity probe** — an inline block that watches
   the sample stream for discontinuities and logs a timestamped record of every
   gap (the "gauge in the pipe"). *Implemented 2026-08-05, and **split so that
   half of it is actually tested**: the clock arithmetic lives in `gap_math.py`,
@@ -610,11 +613,11 @@ boots — that is what `os_prefix` bought.
     anyone "simplifies" `pair_delta`.
   - ⚠️ **The documented way to run the tests did not work** and is corrected.
     `python3 -m unittest <path>` takes a dotted module name, not a path; running
-    them as `kosmos.test_gap_math` executes `__init__.py`, which imports the
+    them as `molniya.test_gap_math` executes `__init__.py`, which imports the
     probe, which imports gnuradio — defeating the point; and discovery from the
-    repo root fails because `gr-kosmos` is not a valid Python identifier. The one
+    repo root fails because `gr-molniya` is not a valid Python identifier. The one
     working invocation is
-    `cd gr-kosmos/python/kosmos && python3 -m unittest test_gap_math`, and the
+    `cd gr-molniya/python/molniya && python3 -m unittest test_gap_math`, and the
     reasons are recorded in the file so it does not get "fixed" back.
   - **The design note worth keeping:** a `sync_block` cannot see a gap by
     inspecting its input buffer — the buffer is always contiguous no matter what
@@ -623,9 +626,9 @@ boots — that is what `os_prefix` bought.
     between the timestamp in a new tag and the time predicted from the previous
     tag plus samples consumed since. `rx_time` values are PMT pairs of
     (whole seconds, fractional seconds), not floats. All written down in
-    `gr-kosmos/python/kosmos/discontinuity_probe.py`.
+    `gr-molniya/python/molniya/discontinuity_probe.py`.
   - No `CMakeLists.txt` on purpose: a full OOT module's build system is
-    generated by `gr_modtool newmod kosmos`, not hand-written. Several hundred
+    generated by `gr_modtool newmod molniya`, not hand-written. Several hundred
     lines of version-specific CMake that nobody has run would look authoritative
     and fail on the Pi.
   - Upgrades Tests 2–3 from synthetic (`rtl_test` streaming to nowhere) to
@@ -657,7 +660,7 @@ positioning leans harder on pillars 2 and 3.
    legacy file.
    *This build is the April RF-Linux-era kernel, and it lives on altai (now the
    production host). It proved PREEMPT_RT works — a v0.1 result — but the bench
-   box (pi-server) gets a fresh `-kosmos` build at step 9; it is not carried over.*
+   box (pi-server) gets a fresh `-molniya` build at step 9; it is not carried over.*
 ✅ Real-time scheduling (1000Hz tick, high-res timers)
 ✅ Full dynticks (`CONFIG_NO_HZ_FULL`) — **active and confirmed on hardware
    2026-08-02.** `/sys/devices/system/cpu/nohz_full` reads `1-3` on the running
@@ -671,10 +674,10 @@ positioning leans harder on pillars 2 and 3.
    The code existed; the activation did not. It survived four commits and a
    hardware pre-flight, which is exactly why "verified, not written" is the rule.*
 ✅ Kernel version string — the step-9 rebuild happened 2026-07-31 and produced
-   **`6.12.98-kosmos+`**, so `CONFIG_LOCALVERSION` took effect and this kernel's
+   **`6.12.98-molniya+`**, so `CONFIG_LOCALVERSION` took effect and this kernel's
    modules land in their own directory. Built from the pinned commit
    `f5a99b95`. ✅ **Installed and booted — confirmed on hardware 2026-08-02.**
-   pi-server runs `6.12.98-kosmos+`; `02a-verify-kernel.sh` reports **7 passed, 0
+   pi-server runs `6.12.98-molniya+`; `02a-verify-kernel.sh` reports **7 passed, 0
    failed** (PREEMPT_RT in `uname -v`, 1000 Hz, governor `performance`, USB, AX.25,
    `/proc/config.gz`). The RT kernel boots on real hardware and the localversion
    separated the module directories as intended.
@@ -765,7 +768,7 @@ first run on pi-server is the test.*
     is an explicit catalogue-number list and the bulk groups go to
     `~/.config/satellite-tle/` for gpredict and SatDump instead.
   - ~~Still to do: put it on a timer~~ ✅ **2026-08-05** —
-    `kosmos-tle-update@.service` + `kosmos-tle-update@.timer`, installed by
+    `molniya-tle-update@.service` + `molniya-tle-update@.timer`, installed by
     `automation/install-tle-timer.sh`. Twice daily at 05:17/17:17 with a 15-minute
     random spread, `Persistent=true` so a box that was powered off through both
     windows catches up instead of staying a day stale.
@@ -872,11 +875,11 @@ first run on pi-server is the test.*
     no catalog part will ever exist for a homegrown protocol
   - Closes an independent-verification loop: the embedded device transmits,
     the ground station verifies from outside the firmware — RF unit tests
-  - **Independence rule (2026-07-29):** KosmOS stays independent. This
+  - **Independence rule (2026-07-29):** MolniyaOS stays independent. This
     decoder is an out-of-tree GNU Radio module (`gr-icesickle`) that *runs
-    on* KosmOS but doesn't ship *in* it — it likely lives in the IceSickle
-    repo. KosmOS is the platform; IceSickle support is an app. The distro
-    never depends on it, references it at most as a "built on KosmOS"
+    on* MolniyaOS but doesn't ship *in* it — it likely lives in the IceSickle
+    repo. MolniyaOS is the platform; IceSickle support is an app. The distro
+    never depends on it, references it at most as a "built on MolniyaOS"
     example. Revisit when Phase 2 starts.
 - [ ] **Upstream contribution to gr-satellites** (custom decoder, community PR)
   - Pick a newly-launched cubesat that's transmitting but not yet covered,
@@ -1022,12 +1025,12 @@ appliance. Phases 1–2 build the parts; Phase 3 makes them run themselves.*
     pipeline, document the tradeoff.
   - **Decoupled from the production bridge (see Hardware Topology).** This module
     is a distro feature to build and test; the live obfs4 bridge lives on altai
-    and is never touched by KosmOS development. When dogfooding this module,
+    and is never touched by MolniyaOS development. When dogfooding this module,
     generate a **throwaway test identity** — never reuse the production bridge's
     keys or fingerprint. A test bridge and the real one must never share identity.
 
 ### Phase 4: "Hardened Platform" — Reliability & Distribution
-*Goal: Make KosmOS reproducible and distributable*
+*Goal: Make MolniyaOS reproducible and distributable*
 
 #### 4a. Image Building
 
@@ -1052,12 +1055,12 @@ test will no longer let you conclude is that the update path works.
 
 ```sh
 # 1. Create the root CA. ON REMOVABLE MEDIA, and never on pi-server or in the
-#    repo. This is the crown jewel: it is the trust root every KosmOS box will
+#    repo. This is the crown jewel: it is the trust root every MolniyaOS box will
 #    carry, and make-keys.sh refuses a destination inside the work tree.
-image/rauc/make-keys.sh ca /media/<offline>/kosmos-ca
+image/rauc/make-keys.sh ca /media/<offline>/molniya-ca
 
 # 2. Inject its public cert into the existing image, on pi-server, in place.
-ssh pi-server 'kosmos-img/image/inject-keyring.sh \
+ssh pi-server 'molniya-img/image/inject-keyring.sh \
     --expect 9fedaa86f1e35226ba60cbf8d159aa6dae096aea369b2dda377b9d219da33fa1 \
     --cert ~/ca.cert.pem'
 ```
@@ -1077,10 +1080,10 @@ has 3.4 GB free; there is nowhere to put a copy.
 
 **⚠️ Two images' worth of confusion is now possible on the Windows drive.** The
 digest below is the *pre-injection* one. Whoever flashes needs to know which
-`.img.gz` in `X:\kosmos-images\` is current, and the only durable answer is the
+`.img.gz` in `X:\molniya-images\` is current, and the only durable answer is the
 `.sha256` beside it.
 
-**Artifact (pre-injection):** `X:\kosmos-images\kosmos-rpi5.img.gz`, **3.49 GB**,
+**Artifact (pre-injection):** `X:\molniya-images\molniya-rpi5.img.gz`, **3.49 GB**,
 raw digest `9fedaa86f1e35226ba60cbf8d159aa6dae096aea369b2dda377b9d219da33fa1`,
 round trip confirmed by decompressing to `sha256sum` on the receiving end. It
 supersedes `b1c4c74c…`, which predated 4d entirely and is gone.
@@ -1091,7 +1094,7 @@ rebuilt rather than patched:
 ```
 apt_userspace  rt-tests stress-ng rauc rauc-service
 satcom_stack   built from source
-kernel         6.12.98-kosmos+
+kernel         6.12.98-molniya+
 base_sha256    acff736ca7945e3b305f07cda4abdb870910e12634991da69783611756e381b3
 ```
 
@@ -1140,11 +1143,11 @@ to the 4096 MiB slot size, and would have happened again here.
 
 **All 96 hold**, in both slots: the seven partitions match `layout.sh` to the
 sector; `autoboot.txt` is byte-identical to the emitter and is the only file on
-p1; each bootfs holds `kernel-kosmos.img` with the stock `kernel_2712.img` and
-`kernel8.img` gone and `kernel=kernel-kosmos.img` written into `config.txt`;
+p1; each bootfs holds `kernel-molniya.img` with the stock `kernel_2712.img` and
+`kernel8.img` gone and `kernel=kernel-molniya.img` written into `config.txt`;
 each root carries its own fstab, an identical `slots.conf`, modules and a
-populated `modules.dep` for `6.12.98-kosmos+`, the health check and
-`slot-identity.sh`, and all five SATCOM binaries; the `kosmos` account is uid
+populated `modules.dep` for `6.12.98-molniya+`, the health check and
+`slot-identity.sh`, and all five SATCOM binaries; the `molniya` account is uid
 1000 with `/bin/bash`, `authorized_keys` is 0600 `1000:1000` with two keys,
 the sudoers drop-in is 0440, `ssh.service` is enabled, `userconfig.service` is
 not, and the sshd drop-in is key-only. No `pi` user survives in either slot.
@@ -1167,8 +1170,8 @@ kind of check this phase keeps producing:
 **And it was falsified before being believed**, which is the step that was
 missing from every check this phase got wrong. A verifier that cannot fail is
 indistinguishable from one that works. Two deliberately wrong runs against the
-same good image: `KOSMOS_TARGET_DEV=/dev/nvme0n1` fails 4 checks (both cmdline
-and both fstab), `KOSMOS_LOGIN_USER=nosuchuser` fails 18 (the whole access
+same good image: `MOLNIYA_TARGET_DEV=/dev/nvme0n1` fails 4 checks (both cmdline
+and both fstab), `MOLNIYA_LOGIN_USER=nosuchuser` fails 18 (the whole access
 section, in both slots). The assertions bite.
 
 One real defect in the first run, and it was the test's, not the image's: the
@@ -1226,7 +1229,7 @@ Split by artifact, each independently runnable, sequencer on top — the shape
 | Stage | Script | Product | Status |
 |---|---|---|---|
 | 1 | `image/fetch-base.sh` | verified stock `.img` | ✅ built, run on pi-server |
-| 2 | `image/build-rootfs.sh` | KosmOS rootfs (chroot: kernel + userspace) | ✅ built, run on pi-server |
+| 2 | `image/build-rootfs.sh` | MolniyaOS rootfs (chroot: kernel + userspace) | ✅ built, run on pi-server |
 | 3 | `image/assemble-image.sh` | A/B `.img` per `layout.sh`, both slots + `slots.conf` | ✅ built, image produced |
 | 4 | `image/build-image.sh` | sequencer → `.img.gz` on stdout | ✅ built, 3.6 GB streamed |
 | → | `image/verify-image.sh` | structural assertions over a finished `.img` | ✅ **127/127** on the 2026-08-26 rebuild (was 96, then 98) |
@@ -1299,7 +1302,7 @@ Split by artifact, each independently runnable, sequencer on top — the shape
   1. **The stock image cannot boot headless into a usable state.** `pi` exists
      as uid 1000 but is **locked — no password hash** — and `userconfig.service`
      is enabled, so a first boot with no `/boot/firmware/userconf.txt` sits on
-     the console waiting for a user to be created. KosmOS must not paper over
+     the console waiting for a user to be created. MolniyaOS must not paper over
      this by baking in default credentials: an appliance shipping a known
      username and password is a worse failure than one that asks. The safe
      answer is the platform's own — the flasher supplies `userconf.txt`, which
@@ -1312,11 +1315,11 @@ Split by artifact, each independently runnable, sequencer on top — the shape
      being missed is a card that eats slot B on first boot.
 
   ✅ **`--kernel` exercised after all.** The ROADMAP's claim that no kernel
-  tarball survives on pi-server was wrong — `~/kosmos/kosmos-kernel-6.12.98-kosmos+.tar.gz`
+  tarball survives on pi-server was wrong — `~/molniya/molniya-kernel-6.12.98-molniya+.tar.gz`
   has been sitting there since 2026-07-31 (corrected at its source below). A
-  second run with `--kernel` installed the modules for `6.12.98-kosmos+` and ran
+  second run with `--kernel` installed the modules for `6.12.98-molniya+` and ran
   `depmod` inside the chroot, and the manifest records the version. So the
-  rootfs is now a real KosmOS rootfs, not base plus bench tools.
+  rootfs is now a real MolniyaOS rootfs, not base plus bench tools.
 
   ⏳ **`--with-satcom` — two blockers found before the first run, 2026-08-23.**
   Both would have wasted hours, and the second would have produced a *wrong
@@ -1336,7 +1339,7 @@ Split by artifact, each independently runnable, sequencer on top — the shape
      entire purpose of this run is to measure the root size, that is not a
      failed build — it is a confidently wrong number.
 
-  Fixed with `KOSMOS_ASSUME_YES`, an **explicit opt-in with no default**: unset
+  Fixed with `MOLNIYA_ASSUME_YES`, an **explicit opt-in with no default**: unset
   still prompts, so running any of these by hand is unchanged, and the builder
   sets it deliberately. This is the same shape as the `pipefail`/`grep -q` bug
   and the namespace-package import — a check whose failure mode is silent
@@ -1389,7 +1392,7 @@ Split by artifact, each independently runnable, sequencer on top — the shape
   deliberately left: they are dead only because stage 3 removes the stock
   kernels, and stage 2 does not get to depend on stage 3's decision.
 - [x] **Stage 3 — assemble the A/B image.** `image/assemble-image.sh`, 286
-  lines. **The first KosmOS image exists**, built on pi-server in 7m54s:
+  lines. **The first MolniyaOS image exists**, built on pi-server in 7m54s:
   9760 MiB apparent, 4.7 GB on disk because it stays sparse.
 
   ⚠️ **Those two figures are the pre-SATCOM build's** and are kept only to
@@ -1408,29 +1411,29 @@ Split by artifact, each independently runnable, sequencer on top — the shape
   update that believes it is writing to the spare.
 
   **The kernel-arming step is the one that would have made the image a
-  convincing fake.** The package ships `kernel-kosmos.img`; the base bootfs
+  convincing fake.** The package ships `kernel-molniya.img`; the base bootfs
   ships `kernel_2712.img` and `kernel8.img`; and the stock `config.txt` has **no
   `kernel=` line at all**, so the Pi 5 firmware auto-selects `kernel_2712.img`.
   Overlay the two naively and the result boots the **stock 6.18.34 kernel** with
-  KosmOS modules sitting unused beside it — no `PREEMPT_RT`, no latency
+  MolniyaOS modules sitting unused beside it — no `PREEMPT_RT`, no latency
   guarantee, and nothing on the box mentioning it. Found by reading the package
   before the first assembly rather than after. Stage 3 now writes
-  `kernel=kernel-kosmos.img` into each slot's `config.txt` and deletes the stock
+  `kernel=kernel-molniya.img` into each slot's `config.txt` and deletes the stock
   kernels from that slot: inside 4d the *other slot* is the fallback, so a
   second kernel in the same slot buys nothing and leaves an ambiguity that only
   bites when the `kernel=` line goes missing. The health check's "kernel carries
-  `-kosmos`" assertion is the backstop if this is ever got wrong again.
+  `-molniya`" assertion is the backstop if this is ever got wrong again.
 
   **Verified by mounting the finished image, not by trusting the log.**
   (This describes the first assembly, by hand. That image was later deleted
   for its 4096 MiB slots; the findings held on the rebuild, and every one of
   them is now an assertion in `verify-image.sh` rather than a paragraph.)
   Seven partitions matching `layout.sh` exactly; `autoboot.txt` on p1 with slot A
-  default and `[tryboot]` naming B; bootfs A holding only `kernel-kosmos.img`
+  default and `[tryboot]` naming B; bootfs A holding only `kernel-molniya.img`
   with `root=/dev/mmcblk0p5`, bootfs B the same with `root=…p6`; both roots
   carrying the right per-slot fstab, an identical `slots.conf`, the health check
-  and its helper under `/usr/local/lib/kosmos/`, and modules for
-  `6.12.98-kosmos+`; the data partition seeded and shared. **The cross-check
+  and its helper under `/usr/local/lib/molniya/`, and modules for
+  `6.12.98-molniya+`; the data partition seeded and shared. **The cross-check
   that matters holds in both slots:** boot p2 → `root=p5` → slot A, boot p3 →
   `root=p6` → slot B, which is precisely the agreement `slot-identity.sh`
   asserts at boot.
@@ -1470,7 +1473,7 @@ Split by artifact, each independently runnable, sequencer on top — the shape
   minutes and costing two hours, at exactly the moment first boots fail most.
 
   ```
-  ssh pi-server 'kosmos-img/build-image.sh --stream' > kosmos-rpi5.img.gz
+  ssh pi-server 'molniya-img/build-image.sh --stream' > molniya-rpi5.img.gz
   ```
 
   The image has to leave the box anyway, since nothing here can flash it. So
@@ -1531,7 +1534,7 @@ The invariant: **the proven card is never inserted in anything that can write
 while the test runs.** Worst case under this protocol is downtime, never data
 loss.
 
-**Artifact:** `X:\kosmos-images\kosmos-rpi5.img.gz`, 3.49 GB, built 2026-08-26.
+**Artifact:** `X:\molniya-images\molniya-rpi5.img.gz`, 3.49 GB, built 2026-08-26.
 Raw digest `9fedaa86f1e35226ba60cbf8d159aa6dae096aea369b2dda377b9d219da33fa1`,
 round trip confirmed. 127/127 structural + release checks. Never booted.
 
@@ -1539,9 +1542,9 @@ round trip confirmed. 127/127 structural + release checks. Never booted.
 still stands — `rauc status` does not read the keyring — but a pass proves
 nothing about `rauc install`, which on this image fails with `failed to load CA
 file`. If the card is being flashed after the injector has run, use the new
-digest from `kosmos-rpi5.img.gz.sha256`, not the one above.
+digest from `molniya-rpi5.img.gz.sha256`, not the one above.
 
-1. **Flash the spare card** from `kosmos-rpi5.img.gz` (Imager, "Use custom" —
+1. **Flash the spare card** from `molniya-rpi5.img.gz` (Imager, "Use custom" —
    it reads `.img.gz` directly, which is why the artifact is gzip). Confirming
    the target device is the one irreversible step — verify it twice.
 
@@ -1554,7 +1557,7 @@ digest from `kosmos-rpi5.img.gz.sha256`, not the one above.
 2. **Clean shutdown of pi-server.** Pull its card; it sits on the desk as the
    rollback state.
 
-3. **Boot the spare, and get in.** The account is **`kosmos`**, not `homelab` —
+3. **Boot the spare, and get in.** The account is **`molniya`**, not `homelab` —
    `homelab` is pi-server's own installed system, not the image. Key-only, and
    the key in `~/.ssh/id_ed25519` is already baked in.
 
@@ -1565,21 +1568,21 @@ digest from `kosmos-rpi5.img.gz.sha256`, not the one above.
 
    ```
    ssh-keygen -R 192.168.1.2
-   ssh kosmos@192.168.1.2
+   ssh molniya@192.168.1.2
    ```
 
 4. **Run the acceptance checks.** The first three predate 4d; the rest are new
    on 2026-08-26 and have never run on hardware.
 
    ```
-   uname -r                                              # want 6.12.98-kosmos+
-   /usr/local/lib/kosmos/slot-identity.sh                # want SLOT=A, VERDICT=consistent
-   /usr/local/lib/kosmos/kosmos-health-check.sh; echo $?  # want exit 0
+   uname -r                                              # want 6.12.98-molniya+
+   /usr/local/lib/molniya/slot-identity.sh                # want SLOT=A, VERDICT=consistent
+   /usr/local/lib/molniya/molniya-health-check.sh; echo $?  # want exit 0
    findmnt /boot/selector -o TARGET,SOURCE,FSTYPE,OPTIONS # want ro
-   sudo /usr/local/lib/kosmos/kosmos-boot-backend.sh get-primary   # want A
-   sudo /usr/local/lib/kosmos/kosmos-boot-backend.sh get-current   # want A
+   sudo /usr/local/lib/molniya/molniya-boot-backend.sh get-primary   # want A
+   sudo /usr/local/lib/molniya/molniya-boot-backend.sh get-current   # want A
    sudo rauc status
-   systemctl status kosmos-mark-good.service --no-pager -l
+   systemctl status molniya-mark-good.service --no-pager -l
    ```
 
    **`get-primary` and `get-current` both returning `A` is the finding that
@@ -1593,7 +1596,7 @@ digest from `kosmos-rpi5.img.gz.sha256`, not the one above.
    the TLE timer. That is correct, not a failure: only CRITICAL affects the
    exit code, and a box with no dongle must never trigger a rollback.
 
-   **`rauc` has never run on a KosmOS box.** If `rauc status` complains,
+   **`rauc` has never run on a MolniyaOS box.** If `rauc status` complains,
    capture the exact text rather than working around it; its first words are
    worth reading carefully, and `system.conf` naming a `bootloader=custom`
    handler is the part least likely to be right first time.
@@ -1626,7 +1629,7 @@ reasons in written bytes rather than apparent size, which is why it passes on a
 host that a naive `13856 > free` check would refuse.
 
 The rebuild needed **~1.5 GB more than the disk had**, and it was found by
-deleting `~/kosmos/linux` (3075 MiB, a clean checkout at the pinned commit
+deleting `~/molniya/linux` (3075 MiB, a clean checkout at the pinned commit
 `f5a99b95…`, so `git clone` restores it and the image build never touches it —
 it consumes the 32 MB tarball). Recorded because the next `--force` rebuild
 will need the same room, and the cheapest place to find it is the same place.
@@ -1661,7 +1664,7 @@ so rather than implying 16 GB is fine. 32 GB is the release-note number.
 ⚠️ **This invalidates the image assembled earlier the same day.** It was built
 with 4096 MiB slots and without the SATCOM stack — it only "fit" because the
 thing that does not fit was missing. It has been deleted rather than left
-lying around looking like a KosmOS image.
+lying around looking like a MolniyaOS image.
 
 - [ ] **Original bullets, kept for the record**
   - Takes a fresh Pi OS Lite image → applies kernel → installs all tools
@@ -1711,7 +1714,7 @@ lying around looking like a KosmOS image.
   - Like shipping a switch with a sane default config
 
 #### 4c. Documentation
-- [ ] **Man pages or built-in help** for KosmOS-specific scripts
+- [ ] **Man pages or built-in help** for MolniyaOS-specific scripts
 - [x] **Frequency reference guide** — *`config/frequencies.md`.* Weather sats,
   SATCOM (Iridium/Inmarsat), ADS-B/AIS, amateur, ISM, plus the wavelength table
   the antenna guide's element lengths come from. Rows likeliest to have drifted
@@ -1745,7 +1748,7 @@ but its value is a hosted fleet server — irrelevant for one box. RAUC is the p
 
 **Slot decision: Pi firmware `tryboot`, not U-Boot.** Most embedded A/B setups let
 U-Boot choose the slot. ~~That is a dead end here: U-Boot has no PCIe support for
-the BCM2712, which breaks the moment KosmOS moves to an NVMe HAT.~~ ⚠️ **That
+the BCM2712, which breaks the moment MolniyaOS moves to an NVMe HAT.~~ ⚠️ **That
 reason expired — see the re-verification below. The decision stands, the
 justification does not.** U-Boot v2026.07 enables BCM2712 PCIe; what it still
 cannot do is boot from NVMe. Since the Pi 4,
@@ -1795,11 +1798,11 @@ boot partition).
   paragraph and `layout.sh min-bytes` ever disagree, the script is right.
 
   Every A/B swap replaces the root wholesale. Anything left on root is silently
-  wiped on update — silently, which is the dangerous part. KosmOS state that must
+  wiped on update — silently, which is the dangerous part. MolniyaOS state that must
   live on the data partition, named explicitly because each one already exists
   somewhere in this roadmap:
   - TLE elements (`~/.predict/predict.tle`) and the updater's cache — note that
-    `kosmos-tle-update@.service` is a template keyed on the username (`User=%i`)
+    `molniya-tle-update@.service` is a template keyed on the username (`User=%i`)
     and systemd derives `$HOME` from the account database, so the script writes
     under `$HOME`. `$HOME` itself is therefore part of this boundary, not an
     afterthought (Phase 1b)
@@ -1818,7 +1821,7 @@ boot partition).
   marks good → next boot reverts.
 
   ✅ **The checker exists and has been run on hardware, 2026-08-23** —
-  `image/health-check/kosmos-health-check.sh`, 372 lines. Its **exit code is the
+  `image/health-check/molniya-health-check.sh`, 372 lines. Its **exit code is the
   verdict**: 0 healthy, non-zero do-not-mark-good. That is what separates it in
   kind from its seed `02a-verify-kernel.sh`, which always exits 0 on purpose;
   every check had to be re-judged as a decision that reboots a machine rather
@@ -1847,8 +1850,8 @@ boot partition).
     field story is explicitly a box with **no network**, so a failed TLE refresh
     is the expected steady state out there, not a symptom.
 
-  Checks now: kernel carries `-kosmos` · PREEMPT_RT active (three-step) ·
-  watchdog bound · watchdog armed · GNU Radio imports · `gr-kosmos` imports ·
+  Checks now: kernel carries `-molniya` · PREEMPT_RT active (three-step) ·
+  watchdog bound · watchdog armed · GNU Radio imports · `gr-molniya` imports ·
   SATCOM binaries present — all CRITICAL; SDR device answering · TLE timer
   instance state — ADVISORY.
 
@@ -1856,25 +1859,25 @@ boot partition).
   so.** Both were false *passes*, which is the direction that marks a broken slot
   good:
 
-  1. **`gr-kosmos` imports.** `python3 -c "import kosmos"` proves nothing.
+  1. **`gr-molniya` imports.** `python3 -c "import molniya"` proves nothing.
      Python invents an implicit namespace package from any directory named
-     `kosmos/` on `sys.path` — and the current working directory is on that path.
+     `molniya/` on `sys.path` — and the current working directory is on that path.
      Demonstrated on pi-server, where the import **succeeded** with
-     `__file__ = None`, off an unrelated `~/kosmos` directory, on a box with no
-     gr-kosmos installed. Fixed by importing a **submodule** (a namespace package
+     `__file__ = None`, off an unrelated `~/molniya` directory, on a box with no
+     gr-molniya installed. Fixed by importing a **submodule** (a namespace package
      has no code to import from) under **`python3 -P`**, so the answer cannot
      depend on where the service was started. Both were verified side by side:
      from that same directory the naive form passes and the real check fails.
-  2. **One check, two subjects.** `kosmos/__init__.py` re-exports the probe,
+  2. **One check, two subjects.** `molniya/__init__.py` re-exports the probe,
      which imports numpy, pmt and `gnuradio.gr` — so *any* import from the
      package drags in the whole GNU Radio stack, and a single check would report
-     "gr-kosmos is broken" when GNU Radio is what is missing, sending whoever
+     "gr-molniya is broken" when GNU Radio is what is missing, sending whoever
      reads the journal to the wrong place. Now asked separately. The dependency
      itself is correct and stays: an OOT module without its framework is not
      installed in any sense worth passing.
 
   **Run on pi-server, both paths:** as it stands the box reports UNHEALTHY, exit
-  1 — kernel, RT, watchdog bound and armed all pass; GNU Radio, gr-kosmos, SATCOM
+  1 — kernel, RT, watchdog bound and armed all pass; GNU Radio, gr-molniya, SATCOM
   binaries and TLE units fail, which is correct, since pi-server has the kernel
   but no SATCOM userspace. Against a throwaway harness supplying the missing
   pieces it reports **HEALTHY, exit 0, with two advisory warnings outstanding** —
@@ -1882,9 +1885,9 @@ boot partition).
   proves the advisory tier does not trigger a rollback, which is the whole point
   of the split. The harness was removed afterwards and the box left as found.
 
-  ✅ **`kosmos-mark-good.sh` and its unit — built 2026-08-26.**
-  `image/rauc/kosmos-mark-good.sh` runs the checker and calls
-  `rauc status mark-good` **only on exit 0**; `kosmos-mark-good.service` is a
+  ✅ **`molniya-mark-good.sh` and its unit — built 2026-08-26.**
+  `image/rauc/molniya-mark-good.sh` runs the checker and calls
+  `rauc status mark-good` **only on exit 0**; `molniya-mark-good.service` is a
   `Type=oneshot` enabled by symlink at image-assembly time.
 
   Two decisions in it are worth more than the code. **Its ordering is not
@@ -1929,7 +1932,7 @@ boot partition).
   implementing five verbs, patching nothing. It predates v1.11 (`get-current`
   was added there) and **Debian trixie ships v1.13**, so the base image can
   `apt install rauc` with no backport, no PPA and no fork. When #1599 lands,
-  `bootloader=` names the native backend and `image/rauc/kosmos-boot-backend.sh`
+  `bootloader=` names the native backend and `image/rauc/molniya-boot-backend.sh`
   is deleted. There is nothing to unwind.
 
   ⚠️ **The tree had already made this decision and the prose had not.**
@@ -1941,7 +1944,7 @@ boot partition).
   parked decision was in prose, the live decision was in an emitter, and
   nothing made them meet.
 
-  **`image/rauc/kosmos-boot-backend.sh`, 386 lines.** It holds no state. All
+  **`image/rauc/molniya-boot-backend.sh`, 386 lines.** It holds no state. All
   three answers derive from three facts: `autoboot.txt`'s `[all] boot_partition`
   (the committed slot), and `/chosen/bootloader/{partition,tryboot}` from the
   device tree (the booted slot, and whether this boot is a try). It has **no
@@ -2044,7 +2047,7 @@ boot partition).
 ##### ⚠️ The keyring was never installed — 127 of 127 on an image that could not update (found 2026-08-27)
 
 **`system.conf` has named a keyring since the day 4d started, and nothing ever
-wrote the file.** `layout.sh` emits `[keyring] path=/etc/rauc/kosmos.cert.pem`;
+wrote the file.** `layout.sh` emits `[keyring] path=/etc/rauc/molniya.cert.pem`;
 a repo-wide search for `cert|keyring|pem|openssl` returned those two lines and
 nothing else. No build stage created it, and no check looked for it.
 
@@ -2052,8 +2055,8 @@ Measured on rauc 1.13-3+deb13u1, the version in the image, this is not cosmetic:
 
 | keyring | `rauc info <bundle>` |
 |---|---|
-| missing | **rc=1** — `failed to load CA file '/etc/rauc/kosmos.cert.pem'` |
-| present | rc=0 — `Verified inline signature by 'O = KosmOS…'` |
+| missing | **rc=1** — `failed to load CA file '/etc/rauc/molniya.cert.pem'` |
+| present | rc=0 — `Verified inline signature by 'O = MolniyaOS…'` |
 
 So the 3.49 GB artifact of 2026-08-26 passes **127 of 127** structural and
 release checks and **would have refused every bundle it was ever offered.** The
@@ -2089,18 +2092,18 @@ of its instances does not generalise itself.
 
    **The CA cert is deliberately not committed either.** Shipping ours would
    make it the default trust root for every image anyone builds from this tree
-   — a stranger's box installing bundles we signed. Whoever builds KosmOS
+   — a stranger's box installing bundles we signed. Whoever builds MolniyaOS
    generates their own, which is why `provision-rauc.sh` fails loudly rather
    than falling back to a default.
 
 2. **`provision-rauc.sh` installs it**, at whatever path that slot's own
-   `system.conf` names, from `KOSMOS_RAUC_CERT`, parsing it with `openssl x509`
+   `system.conf` names, from `MOLNIYA_RAUC_CERT`, parsing it with `openssl x509`
    before it goes in. Every future build carries a keyring or does not build.
 
 3. **`verify-image.sh` asserts it — the general form.** For every file
    `system.conf` points at, the image must actually deliver it. Present is not
    enough: the file is parsed as a certificate, checked to be valid for at least
-   another year, and matched against `KOSMOS_RAUC_CERT_FINGERPRINT` when the
+   another year, and matched against `MOLNIYA_RAUC_CERT_FINGERPRINT` when the
    operator sets one — because a truncated copy, a DER file with a `.pem` name,
    and the *wrong CA's* cert are all present, all nonzero, and all fatal at the
    moment an update is being installed.
@@ -2154,7 +2157,7 @@ line. Worth re-running after any batch of new shell.
 
   Install only the first and two things break at once, both quietly:
   `rauc status mark-good` has no service to reach over D-Bus, and
-  `kosmos-mark-good.service`'s `Wants=rauc.service` names a unit that does not
+  `molniya-mark-good.service`'s `Wants=rauc.service` names a unit that does not
   exist — which systemd logs and then carries on from. Neither shows up until
   the moment an update needs committing, which is the worst time to find out.
   `verify-image.sh` asserts **both** paths in the finished image for exactly
@@ -2176,7 +2179,7 @@ line. Worth re-running after any batch of new shell.
   facts into the device tree, so it works on any Pi 5 with nothing installed.
 
   `image/health-check/slot-identity.sh` (157 lines) gathers the facts and prints
-  them as `KEY=VALUE`; `kosmos-health-check.sh` renders the verdict. Helper
+  them as `KEY=VALUE`; `molniya-health-check.sh` renders the verdict. Helper
   returns data, caller judges — the same split `detect-config.sh`,
   `governor.sh` and `thermal-state.sh` already use.
 
@@ -2191,14 +2194,14 @@ line. Worth re-running after any batch of new shell.
 
   Four verdicts, each exercised on pi-server: `consistent`, `mismatch`,
   `unmapped`, `no-slotmap`. The last is **advisory, not critical** — a pre-4d
-  KosmOS install is a single-root image with no slots, and condemning it would
+  MolniyaOS install is a single-root image with no slots, and condemning it would
   revert good updates on every box older than the A/B layout. Exit code
   separates *bad answer* from *no answer*: `mismatch` exits 0 and reports, while
   a missing device tree exits non-zero, because the caller must be able to tell
   "the slot is wrong" from "the question could not be asked".
 
   **The numbers come from `layout.sh`, not from the checker.** It gained a
-  `slotmap` command emitting `/etc/kosmos/slots.conf`, which the image build
+  `slotmap` command emitting `/etc/molniya/slots.conf`, which the image build
   writes to the target. A health check carrying its own copy of p2/p3/p5/p6
   would be the two-places-one-fact hazard `layout.sh` exists to abolish — and
   the worst instance of it yet, since the consumer that drifts is the one
@@ -2212,7 +2215,7 @@ line. Worth re-running after any batch of new shell.
   A box with no map at all stays HEALTHY, exit 0, warning only.
 
 - [ ] **Bundle build + offline install.** Build the `.raucb`, sign it, put it on
-  a USB stick, `rauc install /media/usb/kosmos-1.4.raucb`. No network in either
+  a USB stick, `rauc install /media/usb/molniya-1.4.raucb`. No network in either
   direction: not to update, not to roll back. This is the field story.
 
   ⏳ **The build half is done and proven off-target, 2026-08-27. The install
@@ -2278,10 +2281,10 @@ line. Worth re-running after any batch of new shell.
   build that hangs is worse than one that fails: nothing is reported, and the
   window during which a plaintext key exists is unbounded. It now refuses up
   front when the key is encrypted and there is no terminal, and takes
-  `KOSMOS_SIGN_PASS` (via openssl `env:`, never `pass:`, which would put the
+  `MOLNIYA_SIGN_PASS` (via openssl `env:`, never `pass:`, which would put the
   secret in `argv` where `ps` can read it) for unattended builds.
 
-  The key is decrypted to a 0600 file under `KOSMOS_BUNDLE_TMP` — `/dev/shm` by
+  The key is decrypted to a 0600 file under `MOLNIYA_BUNDLE_TMP` — `/dev/shm` by
   default, so the plaintext need never touch a disk — removed by an EXIT trap
   installed before the file is written.
 
@@ -2311,7 +2314,7 @@ line. Worth re-running after any batch of new shell.
   `/dev/watchdog0`. A hang on this box already forces a reset today.
 
   **The important part is where that came from.** Not `/etc/systemd/system.conf`
-  — every watchdog line there is still commented out — and not from KosmOS. It
+  — every watchdog line there is still commented out — and not from MolniyaOS. It
   is `/usr/lib/systemd/system.conf.d/40-rpi-enable-watchdog.conf`, shipped by
   Raspberry Pi OS. The kernel command line agrees, carrying `reboot=w`.
 
@@ -2342,7 +2345,7 @@ wrong about the mechanism, in both rows.
 
 | Failure | Covered? |
 |---|---|
-| New slot boots, but KosmOS is broken (bad build, missing driver, dead service) | ✅ health check never marks good → automatic revert |
+| New slot boots, but MolniyaOS is broken (bad build, missing driver, dead service) | ✅ health check never marks good → automatic revert |
 | New slot never reaches Linux, **and resets or crashes** (bad kernel, corrupt initramfs, wrong DTB) | ✅ **covered, and this was previously recorded as uncovered.** The tryboot flag is cleared *before* the firmware starts, so any reset lands back on the old slot with no counter needed |
 | New slot never reaches Linux and **hangs without resetting** | ❌ the real hole. Nothing forces the reset: systemd arms the watchdog, and systemd never ran |
 | Committed slot becomes unbootable *after* mark-good | ❌ no tryboot involved any more; `autoboot.txt` points at it permanently |
@@ -2434,7 +2437,7 @@ closed.** Raspberry Pi's own Upstreaming wiki lists `drivers/char/broadcom/vcio.
 as downstream-only, alongside `vc_mem` and `dwc_otg`; the mailbox *interface* was
 upstreamed back in 4.2, but the `/dev/vcio` character device was not. Bootlin
 agrees independently. Item 13a already closed the half that matters locally —
-`CONFIG_BCM_VCIO=y` and the device node present on the KosmOS kernel.
+`CONFIG_BCM_VCIO=y` and the device node present on the MolniyaOS kernel.
 → Building off the RPi fork is therefore load-bearing, not incidental.
 
 **Implementation trap found while checking, worth more than the claims:**
@@ -2461,11 +2464,11 @@ That belongs to 4a — now with the watchdog drop-in finding as a live input.
 
 ## Career Alignment: SATCOM Job Skills Map
 
-Based on actual SATCOM job postings, here's how KosmOS maps to career skills.
+Based on actual SATCOM job postings, here's how MolniyaOS maps to career skills.
 CCNA is explicitly listed as valued in SATCOM roles — your networking background
 is a direct asset.
 
-| Job Requirement | Where You Learn It in KosmOS |
+| Job Requirement | Where You Learn It in MolniyaOS |
 |----------------|------------------------------|
 | RF engineering / spectrum analysis | SDR++, rtl_power, GNU Radio flowgraphs |
 | Signal processing & modulation | GNU Radio DSP blocks, SatDump demod chains |
@@ -2483,7 +2486,7 @@ is a direct asset.
 | Performance engineering & benchmarking | RT kernel A/B benchmark (cyclictest, dropped-sample analysis, custom probe block) |
 | DSP development | Custom GNU Radio blocks (probe, decoders), gr-satellites contribution |
 
-### Certifications That Stack Well with KosmOS Experience
+### Certifications That Stack Well with MolniyaOS Experience
 
 1. **CCNA** (already studying) — Network fundamentals, directly relevant
 2. **CompTIA Security+** — Required for most DoD SATCOM positions
@@ -2505,7 +2508,7 @@ v0.2   ✅ DONE    SDR userspace tools installed (rtl_433, dump1090, predict)
 v0.25  ⏳ ACTIVE  RT kernel benchmark published (proof of claim — BEFORE the
                  SATCOM stack; Test 1 needs no dongle)
                  Harnesses + methodology written, thermal control added, kernel
-                 BUILT and pinned (6.12.98-kosmos+, f5a99b95) 07-31, INSTALLED
+                 BUILT and pinned (6.12.98-molniya+, f5a99b95) 07-31, INSTALLED
                  and BOOTED 08-02 — 02a verification 7/0 on real hardware.
                  TEST 1 COMPLETE: all 18 rows measured across A/B/C.
                  Headline — worst-case latency under IO load 6262 us (stock)
@@ -2517,7 +2520,7 @@ v0.25  ⏳ ACTIVE  RT kernel benchmark published (proof of claim — BEFORE the
                  `uname -v`, and Test 2 (dropped samples), which waits on the
                  RTL-SDR v4 dongle.
 v0.3   ......    SatDump + GNU Radio + SDR++ (first satellite decode, pinned)
-                 + gr-kosmos discontinuity probe (first custom block)
+                 + gr-molniya discontinuity probe (first custom block)
                  Install scripts written and pinned; no build has run.
                  Probe implemented; its math is unit-tested, its GNU
                  Radio shell has never run.
@@ -2566,7 +2569,7 @@ v1.0   ......    Full release — documented, tested, flashable image
 `✅` exists as of the 2026-07-30 overnight branch, `·` still to build.
 
 ```
-KosmOS/
+MolniyaOS/
 ├── ✅ README.md                 # Project overview and quick start
 ├── ✅ ROADMAP.md                # This document (must be tracked in the repo)
 ├── ✅ LICENSE                   # GPLv3 — the kernel stays GPL-2.0 upstream
@@ -2585,11 +2588,11 @@ KosmOS/
 │   ├── ✅ detect-config.sh      # prints A/B/C from the running kernel (helper)
 │   ├── ✅ governor.sh           # read/set the CPU governor (helper)
 │   └── ✅ thermal-state.sh      # temperature gate + throttle detection (helper)
-├── gr-kosmos/                   # Custom GNU Radio blocks (OOT module)
+├── gr-molniya/                   # Custom GNU Radio blocks (OOT module)
 │   ├── ✅ README.md             # Includes why there is no CMakeLists.txt
 │   ├── ✅ install.sh            # Development install (.pth + GRC yml)
 │   ├── ✅ grc/                  # GRC block definitions
-│   └── ✅ python/kosmos/        # discontinuity probe + gap_math.py & its tests
+│   └── ✅ python/molniya/        # discontinuity probe + gap_math.py & its tests
 ├── userspace/
 │   ├── ✅ 02-post-install.sh    # Sequencer over 02a-02d
 │   ├── ✅ 02a-verify-kernel.sh  # Kernel verification, read-only
@@ -2603,12 +2606,12 @@ KosmOS/
 │   └── ·  04-protocol-decoders.sh  # Iridium, AIS, direwolf (Phase 2)
 ├── automation/
 │   ├── ✅ tle-updater.sh        # TLE refresh; writes ~/.predict/predict.tle
-│   ├── ✅ kosmos-tle-update@.service # The refresh as a unit; instance = username
-│   ├── ✅ kosmos-tle-update@.timer   # Twice daily, spread, persistent
+│   ├── ✅ molniya-tle-update@.service # The refresh as a unit; instance = username
+│   ├── ✅ molniya-tle-update@.timer   # Twice daily, spread, persistent
 │   ├── ✅ install-tle-timer.sh  # Installs the timer for one account
 │   ├── ✅ rtl-power-heatmap.py  # rtl_power CSV → spectrum heatmap PNG
-│   ├── ✅ kosmos-governor.service  # Pins the CPU governor at boot
-│   ├── ✅ kosmos-set-governor.sh   # The governor write itself
+│   ├── ✅ molniya-governor.service  # Pins the CPU governor at boot
+│   ├── ✅ molniya-set-governor.sh   # The governor write itself
 │   ├── ✅ install-governor.sh   # Installs the unit; masks ondemand.service
 │   ├── ·  sat-pass-scheduler.sh # Automated satellite capture
 │   ├── ·  rtl433-service.conf   # systemd unit for always-on RF monitoring
@@ -2632,22 +2635,22 @@ KosmOS/
 │   ├── ✅ build-bundle.sh       # Signed .raucb from a built image (tars, verity)
 │   ├── ✅ inject-keyring.sh     # One-shot: keyring into an image built without one
 │   ├── rauc/                    # The A/B update machinery (4d)
-│   │   ├── ✅ kosmos-boot-backend.sh   # RAUC custom backend: the five verbs
-│   │   ├── ✅ kosmos-mark-good.sh      # Runs the checker, marks good on exit 0 only
-│   │   ├── ✅ kosmos-mark-good.service # Ordered late; no Restart=
+│   │   ├── ✅ molniya-boot-backend.sh   # RAUC custom backend: the five verbs
+│   │   ├── ✅ molniya-mark-good.sh      # Runs the checker, marks good on exit 0 only
+│   │   ├── ✅ molniya-mark-good.service # Ordered late; no Restart=
 │   │   ├── ✅ provision-rauc.sh        # Installs the above into one slot root
 │   │   └── ✅ make-keys.sh             # The CA + signing cert. NO key material,
 │   │                                   # AND NO CERT, is ever committed here —
 │   │                                   # a shipped CA cert would make this repo
 │   │                                   # the trust root for other people's boxes.
-│   │                                   # Build yours; point KOSMOS_RAUC_CERT at it.
+│   │                                   # Build yours; point MOLNIYA_RAUC_CERT at it.
 │   └── health-check/            # The verdict the mark-good gate consumes
-│       ├── ✅ kosmos-health-check.sh # The verdict: exit 0 = safe to mark good
+│       ├── ✅ molniya-health-check.sh # The verdict: exit 0 = safe to mark good
 │       └── ✅ slot-identity.sh       # Which slot booted, and do boot+root agree (helper)
 └── ✅ .gitignore
 
 (NOT in this repo: gr-icesickle — lives with the IceSickle project; runs ON
-KosmOS, doesn't ship IN it.)
+MolniyaOS, doesn't ship IN it.)
 ```
 
 **Packaging note:** `package-kernel.sh` copies the Pi-side scripts into the kernel
@@ -2655,7 +2658,7 @@ tarball from two different directories, and hard-fails on any that are missing.
 That list has to be updated in the same commit as any rename or split under
 `userspace/` — a tarball missing one of them looks complete and fails on the Pi.
 It currently carries `install-kernel.sh` and the whole `02` set. The `03` set,
-`benchmarks/`, `automation/` and `gr-kosmos/` are deliberately **not** packaged:
+`benchmarks/`, `automation/` and `gr-molniya/` are deliberately **not** packaged:
 none of them are needed to get the kernel running, and they are run from a clone
 of the repo on the Pi.
 
@@ -2664,7 +2667,7 @@ of the repo on the Pi.
 ## Immediate Next Steps (ordering per 2026-07-29 audit)
 
 **Do first — cheap, everything downstream depends on them:**
-1. ~~Settle C vs K~~ ✅ **K** — KosmOS
+1. ~~Settle C vs K~~ ✅ **K** — MolniyaOS
 2. ~~Commit this ROADMAP.md into the repo~~ ✅ `0aa90fc`, updated `9280900`
 3. ~~Fix the verification layer~~ ✅ `147fa10` — `CONFIG_IKCONFIG` +
    `IKCONFIG_PROC`, `sudo modprobe ax25`, and a `verify_critical_config()` gate
@@ -2700,8 +2703,8 @@ of the repo on the Pi.
    with a single reboot, and by the time this was worked out only C remained.
    Kept here because the reasoning still applies to a re-run:
 
-   1. **B — ran from the KosmOS boot already in place.** No reboot needed.
-   2. **C — reached by editing `/boot/firmware/kosmos/cmdline.txt` directly**,
+   1. **B — ran from the MolniyaOS boot already in place.** No reboot needed.
+   2. **C — reached by editing `/boot/firmware/molniya/cmdline.txt` directly**,
       appending `nohz_full=1-3 rcu_nocbs=1-3`, then rebooting. **Not** by re-running
       the installer: `install-kernel.sh` resolves its package directory from its own
       location and needs `boot/`, `kernel-version` and `modules/` beside it — that
@@ -2709,19 +2712,19 @@ of the repo on the Pi.
       must stay a single line.
 
       ✅ **Corrected 2026-08-23: a tarball *does* survive on pi-server** —
-      `~/kosmos/kosmos-kernel-6.12.98-kosmos+.tar.gz`, 32 MB, dated 2026-07-31,
-      alongside the staged `kosmos-kernel-pkg/` and the 3.1 GB `linux` build
+      `~/molniya/molniya-kernel-6.12.98-molniya+.tar.gz`, 32 MB, dated 2026-07-31,
+      alongside the staged `molniya-kernel-pkg/` and the 3.1 GB `linux` build
       tree at the pinned commit `f5a99b95…`. The claim above was written when
       nobody had looked. Finding it is what let 4a stages 2 and 3 produce a real
-      KosmOS image rather than a base-plus-bench-tools one, so the correction is
+      MolniyaOS image rather than a base-plus-bench-tools one, so the correction is
       worth more than the disk it occupies.
    3. **A — already banked**, so no third boot. To redo it: comment the two
-      directives in the KosmOS block of `config.txt` and reboot.
+      directives in the MolniyaOS block of `config.txt` and reboot.
 
    Confirm the configuration after every reboot before running anything —
    `detect-config.sh` must print the expected letter. For C that check is not a
    formality: it was the only available evidence that the firmware reads
-   `kosmos/cmdline.txt` at all, since without the dynticks append that file is
+   `molniya/cmdline.txt` at all, since without the dynticks append that file is
    byte-identical to the stock one and B is indistinguishable from a fallback.
    ✅ **It passed 2026-08-02** — `detect-config.sh` prints C and
    `/sys/devices/system/cpu/nohz_full` reads `1-3`, so `os_prefix` command-line
@@ -2742,7 +2745,7 @@ of the repo on the Pi.
    ⚠️ **`--quick` rows are indistinguishable from real ones.**
    `run-latency-bench.sh` appends to `results/summary.tsv` with no loop-count or
    quick-mode column, so a 100k-loop smoke run leaves six rows that look
-   publishable. Always smoke-test with `KOSMOS_BENCH_OUT=/tmp/bench-smoke`.
+   publishable. Always smoke-test with `MOLNIYA_BENCH_OUT=/tmp/bench-smoke`.
 
    ⚠️ **`summary.tsv` header is two columns short** — 7 headers written against 9
    data fields, so the temperature and throttle-status columns land unlabelled in
@@ -2837,16 +2840,16 @@ of the repo on the Pi.
      `os_prefix` — 51 lines, sections `[cm4]`, `[cm5]`, `[all]` only. The stale
      block was **altai's**, and pi-server does not have one, so the
      two-conflicting-`kernel=`-directives hazard does not apply here. The
-     installer's `^os_prefix=kosmos/` grep will behave as designed.
+     installer's `^os_prefix=molniya/` grep will behave as designed.
    - [x] **`/lib/modules` inventoried** — four sets already present:
      `6.12.47+rpt-rpi-2712`, `6.12.47+rpt-rpi-v8`, `6.12.62+rpt-rpi-2712`,
-     `6.12.62+rpt-rpi-v8`. KosmOS adds a fifth in its own versioned directory.
+     `6.12.62+rpt-rpi-v8`. MolniyaOS adds a fifth in its own versioned directory.
    - [x] **Config-A baseline confirmed**: running `6.12.62+rpt-rpi-2712`,
      `#1 SMP PREEMPT Debian 1:6.12.62-1+rpt1`. Exactly the ROADMAP's expectation,
      so no pinning is needed for the baseline.
    - [x] **Governor unit installed, and verified across a reboot 2026-07-31.**
      Rebooted from 34 days' uptime; 16 seconds into the new boot the journal shows
-     `kosmos-set-governor: 'performance' set on 4 core(s)`, all four cores read
+     `molniya-set-governor: 'performance' set on 4 core(s)`, all four cores read
      `performance`, and `scaling_cur_freq` equals `scaling_max_freq` at
      2 400 000 kHz — pinned at max with no ramp. That is the ondemand
      frequency-ramp latency removed from the benchmark, which is the only reason
@@ -2857,7 +2860,7 @@ of the repo on the Pi.
        service overriding it at boot. The ROADMAP previously generalised altai's
        cause to both boxes; on this one there is nothing to mask, only a default
        to override.
-   - [x] **KosmOS cloned** to `~/KosmOS` on pi-server.
+   - [x] **MolniyaOS cloned** to `~/MolniyaOS` on pi-server.
    - [x] **`/boot/firmware`: 445 MB free of 510 MB** — ample for a second kernel,
      its DTBs and overlays.
 
@@ -2874,7 +2877,7 @@ of the repo on the Pi.
    to failure, without needing `JOBS` reduced, and without any intervention. Build
    thermals are also a fact about *this* box and irrelevant to anyone who flashes a
    finished image, which is the entire distribution model from Phase 4a onward — a
-   user compiling a kernel is not a case KosmOS is designed for.
+   user compiling a kernel is not a case MolniyaOS is designed for.
    The temperature is recorded here for one reason only: it establishes that **this
    hardware saturates its cooling under sustained all-core load**, and the
    benchmark is exactly that kind of load. It is evidence about the *benchmark's*
@@ -2904,8 +2907,8 @@ of the repo on the Pi.
     nothing in it has been executed.
 12. First NOAA APT capture using SatDump
 13. ~~**A/B pre-checks (no purchase, no reboot required)** — on pi-server~~
-    ✅ **both run 2026-08-23**, against the running KosmOS kernel
-    (`6.12.98-kosmos+`, `#1 SMP PREEMPT_RT Fri Jul 31 02:36:12 BST 2026`).
+    ✅ **both run 2026-08-23**, against the running MolniyaOS kernel
+    (`6.12.98-molniya+`, `#1 SMP PREEMPT_RT Fri Jul 31 02:36:12 BST 2026`).
     Full findings in 4d; the short version is that **the mechanism is available
     and the pin protecting it was broken.**
 
@@ -2969,5 +2972,5 @@ of the repo on the Pi.
 
 ---
 
-*KosmOS v0.2 — Built from bare metal, aimed at the stars*
+*MolniyaOS v0.2 — Built from bare metal, aimed at the stars*
 *Target: Raspberry Pi 5 (BCM2712, ARM64)*

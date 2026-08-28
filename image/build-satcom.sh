@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================================
-# KosmOS — build the SATCOM stack from source, inside a rootfs (stage 2b)
+# MolniyaOS — build the SATCOM stack from source, inside a rootfs (stage 2b)
 # ============================================================================
 #   ./build-satcom.sh <rootfs-dir>
 #
@@ -18,7 +18,7 @@
 # ⚠️ THIS IS THE FILE THAT NEEDS THE REPO, NOT JUST image/. It copies
 # ../userspace/*.sh into the rootfs, so a deployment of image/ ALONE cannot run
 # it. That is not hypothetical: on 2026-08-26 image/ was deployed to
-# /var/tmp/kosmos-img/ without a sibling userspace/, and the build ran for 18
+# /var/tmp/molniya-img/ without a sibling userspace/, and the build ran for 18
 # minutes -- through the base copy, the kernel modules and the whole apt step
 # -- before dying on `cp: cannot stat '/var/tmp/userspace/*.sh'`.
 #
@@ -30,7 +30,7 @@ set -euo pipefail
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SELF_DIR/.." && pwd)"
-USERSPACE="${KOSMOS_USERSPACE_DIR:-$REPO_ROOT/userspace}"
+USERSPACE="${MOLNIYA_USERSPACE_DIR:-$REPO_ROOT/userspace}"
 
 # The scripts run in the chroot, in this order. 03-satcom-stack.sh resolves
 # 03a/03b/03c from its own $SELF_DIR, which is why the WHOLE directory goes in
@@ -56,7 +56,7 @@ preflight() {
     [ -d "$ROOTFS" ] || die "$ROOTFS: not a directory"
     [ -d "$ROOTFS/usr" ] || die "$ROOTFS: does not look like a root filesystem"
     [ -d "$USERSPACE" ] ||
-        die "no userspace directory at $USERSPACE — deploy the repo's userspace/ beside image/, or set KOSMOS_USERSPACE_DIR"
+        die "no userspace directory at $USERSPACE — deploy the repo's userspace/ beside image/, or set MOLNIYA_USERSPACE_DIR"
 
     local s
     for s in $STAGE_SCRIPTS; do
@@ -65,7 +65,7 @@ preflight() {
     note "userspace: $USERSPACE"
 }
 
-# KOSMOS_ASSUME_YES=1 is mandatory, not a convenience -- without it every
+# MOLNIYA_ASSUME_YES=1 is mandatory, not a convenience -- without it every
 # script's prompt reads EOF, exits 3, and the sequencer reports SKIPPED, so
 # this would succeed having installed nothing. ROADMAP 4a.
 main() {
@@ -74,7 +74,7 @@ main() {
     preflight
 
     step "building the SATCOM stack from source (hours, not minutes)"
-    local dst="$ROOTFS/tmp/kosmos-userspace"
+    local dst="$ROOTFS/tmp/molniya-userspace"
     sudo rm -rf "$dst"
     sudo mkdir -p "$dst"
     sudo cp "$USERSPACE"/*.sh "$dst/"
@@ -83,7 +83,7 @@ main() {
     local s
     for s in $STAGE_SCRIPTS; do
         step "chroot: $s"
-        in_chroot "KOSMOS_ASSUME_YES=1 bash /tmp/kosmos-userspace/$s" ||
+        in_chroot "MOLNIYA_ASSUME_YES=1 bash /tmp/molniya-userspace/$s" ||
             die "$s failed in chroot"
     done
     sudo rm -rf "$dst"

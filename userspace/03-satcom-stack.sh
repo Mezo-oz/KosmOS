@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================================
-# KosmOS 03 — SATCOM Stack (Phase 1a/1c) — sequencer
+# MolniyaOS 03 — SATCOM Stack (Phase 1a/1c) — sequencer
 # ============================================================================
 # Run this ON THE PI, from a clone of this repository. Unlike the 02 set, these
 # scripts are NOT packaged into the kernel tarball: they are not part of getting
 # the kernel running, and bundling a Phase-1 userspace build into the kernel
 # payload would muddle what that tarball is for. On the Pi:
 #
-#   git clone https://github.com/Mezo-oz/KosmOS
-#   ./KosmOS/userspace/03-satcom-stack.sh
+#   git clone https://github.com/Mezo-oz/MolniyaOS
+#   ./MolniyaOS/userspace/03-satcom-stack.sh
 #
 # It sequences three jobs, each with its own prompt and each runnable alone:
 #
@@ -70,7 +70,7 @@ run_job() {
 }
 
 echo "============================================"
-echo "  KosmOS SATCOM Stack"
+echo "  MolniyaOS SATCOM Stack"
 echo "============================================"
 echo ""
 
@@ -91,7 +91,7 @@ if [ "${#SKIPPED[@]}" -gt 0 ]; then
 fi
 echo ""
 echo "  Revisions installed are recorded in:"
-echo "    /usr/local/share/kosmos/build-manifest.txt"
+echo "    /usr/local/share/molniya/build-manifest.txt"
 echo ""
 echo "  Next: refresh orbital elements, then take a pass."
 echo "    automation/tle-updater.sh     # TLEs go stale in days"

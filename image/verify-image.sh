@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================================
-# KosmOS — verify an assembled image (Phase 4a)
+# MolniyaOS — verify an assembled image (Phase 4a)
 # ============================================================================
 # Mounts a finished .img read-only and asserts, against layout.sh, that what
 # was actually written matches what was meant to be written.
@@ -43,12 +43,12 @@ set -euo pipefail
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LAYOUT="$SELF_DIR/layout.sh"
-CACHE="${KOSMOS_BUILD_CACHE:-/var/tmp/kosmos-build}"
+CACHE="${MOLNIYA_BUILD_CACHE:-/var/tmp/molniya-build}"
 RELEASE=0
 if [ "${1:-}" = "--release" ]; then RELEASE=1; shift; fi
-IMG="${1:-$CACHE/kosmos-rpi5.img}"
-TARGET_DEV="${KOSMOS_TARGET_DEV:-/dev/mmcblk0}"
-LOGIN_USER="${KOSMOS_LOGIN_USER:-kosmos}"
+IMG="${1:-$CACHE/molniya-rpi5.img}"
+TARGET_DEV="${MOLNIYA_TARGET_DEV:-/dev/mmcblk0}"
+LOGIN_USER="${MOLNIYA_LOGIN_USER:-molniya}"
 
 MNT="$CACHE/mnt-verify"
 MOUNTED=()
@@ -170,8 +170,8 @@ verify_autoboot() {
 
 # ----------------------------------------------------------------------------
 # A slot's bootfs. The kernel-arming check is the one that matters: the package
-# ships kernel-kosmos.img, the base ships kernel_2712.img, and stock config.txt
-# names neither -- so a naive overlay boots the stock kernel with KosmOS
+# ships kernel-molniya.img, the base ships kernel_2712.img, and stock config.txt
+# names neither -- so a naive overlay boots the stock kernel with MolniyaOS
 # modules sitting unused beside it, and nothing anywhere says so.
 # ----------------------------------------------------------------------------
 verify_boot() {
@@ -180,14 +180,14 @@ verify_boot() {
     step "bootfs $slot (p$part)"
     mount_ro "${LOOPDEV}p${part}" "$dir"
 
-    check "kernel-kosmos.img present" sudo test -f "$dir/kernel-kosmos.img"
+    check "kernel-molniya.img present" sudo test -f "$dir/kernel-molniya.img"
     check_not "stock kernel_2712.img removed" sudo test -e "$dir/kernel_2712.img"
     check_not "stock kernel8.img removed" sudo test -e "$dir/kernel8.img"
     check "Pi 5 device tree present" sudo test -f "$dir/bcm2712-rpi-5-b.dtb"
     check "overlays present" sudo test -d "$dir/overlays"
 
     check "config.txt arms our kernel" \
-        sudo grep -qx 'kernel=kernel-kosmos.img' "$dir/config.txt"
+        sudo grep -qx 'kernel=kernel-molniya.img' "$dir/config.txt"
     check_eq "cmdline.txt matches layout" \
         "$("$LAYOUT" cmdline "$slot" "$TARGET_DEV")" "$(sread "$dir/cmdline.txt")"
 
@@ -212,7 +212,7 @@ verify_root() {
     check_eq "fstab matches layout" \
         "$("$LAYOUT" fstab "$slot" "$TARGET_DEV")" "$(sread "$dir/etc/fstab")"
     check_eq "slots.conf matches layout" \
-        "$("$LAYOUT" slotmap)" "$(sread "$dir/etc/kosmos/slots.conf")"
+        "$("$LAYOUT" slotmap)" "$(sread "$dir/etc/molniya/slots.conf")"
     # The cross-check that matters, and the reason it does not simply re-diff
     # both files against layout.sh: cmdline.txt and fstab are two independent
     # statements of which filesystem is this slot's root, written by different
@@ -230,8 +230,8 @@ verify_root() {
 
     check "modules for $kver" sudo test -d "$dir/lib/modules/$kver"
     check "depmod ran in $kver" sudo test -s "$dir/lib/modules/$kver/modules.dep"
-    check "health check installed" sudo test -x "$dir/usr/local/lib/kosmos/kosmos-health-check.sh"
-    check "slot-identity installed" sudo test -x "$dir/usr/local/lib/kosmos/slot-identity.sh"
+    check "health check installed" sudo test -x "$dir/usr/local/lib/molniya/molniya-health-check.sh"
+    check "slot-identity installed" sudo test -x "$dir/usr/local/lib/molniya/slot-identity.sh"
 
     # RELEASE ONLY. A module tree whose kernel is not in this slot's bootfs can
     # never be loaded by anything -- stage 3 deleted the stock kernels, so the
@@ -283,15 +283,15 @@ verify_access() {
     check_eq "authorized_keys count" "2" "$(sread "$keys" | grep -c '^[^#[:space:]]' || true)"
     check_eq ".ssh mode" "700" "$(smode "$dir/home/$LOGIN_USER/.ssh")"
 
-    check_eq "sudoers drop-in mode" "440" "$(smode "$dir/etc/sudoers.d/010-kosmos-nopasswd")"
+    check_eq "sudoers drop-in mode" "440" "$(smode "$dir/etc/sudoers.d/010-molniya-nopasswd")"
     check "sudoers drop-in grants $LOGIN_USER" \
-        sudo grep -q "^$LOGIN_USER ALL=(ALL) NOPASSWD: ALL$" "$dir/etc/sudoers.d/010-kosmos-nopasswd"
+        sudo grep -q "^$LOGIN_USER ALL=(ALL) NOPASSWD: ALL$" "$dir/etc/sudoers.d/010-molniya-nopasswd"
 
     check "ssh.service enabled" sudo test -L "$wants/ssh.service"
     check_not "userconfig.service disabled" sudo test -e "$wants/userconfig.service"
-    check "sshd drop-in present" sudo test -f "$dir/etc/ssh/sshd_config.d/10-kosmos.conf"
+    check "sshd drop-in present" sudo test -f "$dir/etc/ssh/sshd_config.d/10-molniya.conf"
     check "sshd drop-in is key-only" \
-        sudo grep -qx 'PasswordAuthentication no' "$dir/etc/ssh/sshd_config.d/10-kosmos.conf"
+        sudo grep -qx 'PasswordAuthentication no' "$dir/etc/ssh/sshd_config.d/10-molniya.conf"
 }
 
 # ----------------------------------------------------------------------------
@@ -305,7 +305,7 @@ verify_access() {
 # ----------------------------------------------------------------------------
 # The keyring, and the class of bug it stands for.
 #
-# WHAT HAPPENED. system.conf named /etc/rauc/kosmos.cert.pem from the day the
+# WHAT HAPPENED. system.conf named /etc/rauc/molniya.cert.pem from the day the
 # A/B work started, and nothing ever installed a file there. The image passed
 # 127 of 127 checks and could not have installed a single update: measured on
 # rauc 1.13-3+deb13u1, a missing keyring is `rauc info` exiting 1 with
@@ -360,7 +360,7 @@ verify_keyring() {
     # Pin the identity when the operator says which CA this image is supposed
     # to trust. Presence and parseability cannot tell the right CA from a
     # stale one left in the build cache -- both are certificates.
-    want="${KOSMOS_RAUC_CERT_FINGERPRINT:-}"
+    want="${MOLNIYA_RAUC_CERT_FINGERPRINT:-}"
     if [ -n "$want" ]; then
         got="$(sudo openssl x509 -in "$dir$path" -noout -fingerprint -sha256 2>/dev/null |
                sed 's/^.*=//')"
@@ -390,17 +390,17 @@ verify_rauc() {
         sudo test -f "$dir/usr/lib/systemd/system/rauc.service"
 
     check "mark-good script installed" \
-        sudo test -x "$dir/usr/local/lib/kosmos/kosmos-mark-good.sh"
+        sudo test -x "$dir/usr/local/lib/molniya/molniya-mark-good.sh"
     check_eq "mark-good unit mode" "644" \
-        "$(smode "$dir/etc/systemd/system/kosmos-mark-good.service")"
+        "$(smode "$dir/etc/systemd/system/molniya-mark-good.service")"
     check "mark-good is enabled" sudo test -L \
-        "$dir/etc/systemd/system/multi-user.target.wants/kosmos-mark-good.service"
+        "$dir/etc/systemd/system/multi-user.target.wants/molniya-mark-good.service"
 
     # Three artifacts must agree that p1 is mounted: slots.conf names the
     # selector partition, fstab mounts it, and the mountpoint must exist. A
     # missing directory means the mount silently does not happen -- the state
     # every image before 2026-08-26 shipped in, invisible to every check then.
-    selp="$(sread "$dir/etc/kosmos/slots.conf" | sed -n 's/^KOSMOS_SELECTOR_PARTITION=//p')"
+    selp="$(sread "$dir/etc/molniya/slots.conf" | sed -n 's/^MOLNIYA_SELECTOR_PARTITION=//p')"
     check "slots.conf names the selector partition" test -n "$selp"
     mp="$(sread "$dir/etc/fstab" | awk -v n="p${selp}" '$1 ~ n"$" { print $2 }')"
     check "fstab mounts the selector (p$selp)" test -n "$mp"

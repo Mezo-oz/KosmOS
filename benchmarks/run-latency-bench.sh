@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================================
-# KosmOS — Test 1: scheduling latency (cyclictest)
+# MolniyaOS — Test 1: scheduling latency (cyclictest)
 # ============================================================================
 # Run this ON THE PI, once per boot configuration. Needs no SDR hardware.
 #
@@ -64,7 +64,7 @@ THERMAL_TARGET_C=65
 THERMAL_WAIT_S=600
 THERMAL="$SELF_DIR/thermal-state.sh"
 
-OUT_DIR="${KOSMOS_BENCH_OUT:-$SELF_DIR/results}"
+OUT_DIR="${MOLNIYA_BENCH_OUT:-$SELF_DIR/results}"
 
 # --- Argument handling ------------------------------------------------------
 
@@ -279,7 +279,7 @@ run_one() {
     start_load "$load"
 
     {
-        echo "# KosmOS latency benchmark"
+        echo "# MolniyaOS latency benchmark"
         echo "# config:     $CONFIG ($DETECTED)"
         echo "# load:       $load"
         echo "# affinity:   $affinity"
@@ -341,7 +341,7 @@ RUNS=6
 EST_MIN=$(( (LOOPS * INTERVAL * RUNS) / 60000000 + 3 ))
 
 echo "============================================"
-echo "  KosmOS Latency Benchmark — Test 1"
+echo "  MolniyaOS Latency Benchmark — Test 1"
 echo "============================================"
 echo ""
 echo "  configuration:  $CONFIG ($DETECTED)"

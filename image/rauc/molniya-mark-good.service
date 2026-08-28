@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================================
-# KosmOS — commit the running slot if it is healthy (Phase 4d)
+# MolniyaOS — commit the running slot if it is healthy (Phase 4d)
 # ============================================================================
 # ORDERING IS THE DESIGN HERE. The upstream Pi backend's own mark-good unit is
 # `After=local-fs.target`, which fires while the system is still coming up --
@@ -19,16 +19,16 @@
 # ============================================================================
 
 [Unit]
-Description=KosmOS: mark the booted A/B slot good if the health check passes
-Documentation=https://github.com/Mezo-oz/KosmOS/blob/main/ROADMAP.md
-ConditionPathExists=/etc/kosmos/slots.conf
+Description=MolniyaOS: mark the booted A/B slot good if the health check passes
+Documentation=https://github.com/Mezo-oz/MolniyaOS/blob/main/ROADMAP.md
+ConditionPathExists=/etc/molniya/slots.conf
 Wants=rauc.service
 After=rauc.service
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/usr/local/lib/kosmos/kosmos-mark-good.sh
+ExecStart=/usr/local/lib/molniya/molniya-mark-good.sh
 
 # No Restart=. A boot that failed the health check must STAY failed: retrying
 # until it passes is a slow way of marking every slot good, which is the one

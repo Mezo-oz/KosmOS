@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================================
-# KosmOS — SoC thermal and throttle state
+# MolniyaOS — SoC thermal and throttle state
 # ============================================================================
 # An executable helper, not a sourced library: it returns data on stdout and
 # status via its exit code, so the harnesses that call it stay clean under plain

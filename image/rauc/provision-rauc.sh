@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================================
-# KosmOS — install the A/B update machinery into one slot's root (Phase 4d)
+# MolniyaOS — install the A/B update machinery into one slot's root (Phase 4d)
 # ============================================================================
 #   ./provision-rauc.sh <slot-root-dir> <A|B> <target-dev>
 #
@@ -32,7 +32,7 @@
 # file -- are in a SEPARATE `rauc-service` package (arch: all).
 #
 # Install only the first and two things break quietly at once: `rauc status
-# mark-good` has no service to reach over D-Bus, and kosmos-mark-good.service's
+# mark-good` has no service to reach over D-Bus, and molniya-mark-good.service's
 # `Wants=rauc.service` names a unit that does not exist -- which systemd logs
 # and then carries on from. Both surface at the moment an update needs
 # committing, which is the worst possible time to discover them.
@@ -40,18 +40,18 @@
 # Verified against trixie 2026-08-26: rauc 1.13-3+deb13u1, arm64, in main.
 #
 # ---------------------------------------------------------------------------
-# THE KEYRING. system.conf has always named one -- /etc/rauc/kosmos.cert.pem --
+# THE KEYRING. system.conf has always named one -- /etc/rauc/molniya.cert.pem --
 # and until 2026-08-27 nothing in this repo ever put a file there. Measured on
 # rauc 1.13-3+deb13u1, that is not a warning:
 #
 #   rauc info <bundle>  -> rc=1
-#   failed to load CA file '/etc/rauc/kosmos.cert.pem' and/or directory '(null)'
+#   failed to load CA file '/etc/rauc/molniya.cert.pem' and/or directory '(null)'
 #
 # So every image built before that date passes all 127 structural checks and
 # then refuses every bundle it is ever offered. The cert is installed HERE, and
 # asserted by verify-image.sh, so the two cannot drift apart again.
 #
-# KOSMOS_RAUC_CERT names the CA certificate -- public, safe to copy anywhere,
+# MOLNIYA_RAUC_CERT names the CA certificate -- public, safe to copy anywhere,
 # and NOT shipped in this repo on purpose: committing one would make it the
 # trust root for every image anyone builds from this tree. Generate your own
 # with image/rauc/make-keys.sh. There is deliberately no default and no
@@ -62,7 +62,7 @@ set -euo pipefail
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LAYOUT="$SELF_DIR/../layout.sh"
-RAUC_CERT="${KOSMOS_RAUC_CERT:-}"
+RAUC_CERT="${MOLNIYA_RAUC_CERT:-}"
 
 die()  { echo "provision-rauc.sh: $*" >&2; exit 1; }
 note() { echo "  $*" >&2; }
@@ -86,13 +86,13 @@ install_keyring() {
     path="$(sudo sed -n 's/^path=//p' "$conf" | tail -1)"
     [ -n "$path" ] || die "slot $slot: system.conf names no [keyring] path"
 
-    [ -n "$RAUC_CERT" ] || die "KOSMOS_RAUC_CERT is not set.
+    [ -n "$RAUC_CERT" ] || die "MOLNIYA_RAUC_CERT is not set.
   system.conf points RAUC at '$path', and an image without a certificate there
   refuses every bundle -- rauc exits 1 with 'failed to load CA file'. Generate
   a CA and point this at its public cert:
-      image/rauc/make-keys.sh ca /media/<offline>/kosmos-ca
-      export KOSMOS_RAUC_CERT=/media/<offline>/kosmos-ca/ca.cert.pem"
-    [ -f "$RAUC_CERT" ] || die "KOSMOS_RAUC_CERT=$RAUC_CERT: not a file"
+      image/rauc/make-keys.sh ca /media/<offline>/molniya-ca
+      export MOLNIYA_RAUC_CERT=/media/<offline>/molniya-ca/ca.cert.pem"
+    [ -f "$RAUC_CERT" ] || die "MOLNIYA_RAUC_CERT=$RAUC_CERT: not a file"
 
     # Parse it before it goes in. A truncated or wrong-format file installs
     # just as happily as a good one and fails on the box, mid-update.
@@ -123,27 +123,27 @@ main() {
     # state of the image until 2026-08-26.
     sudo mkdir -p "$root/boot/selector"
 
-    sudo mkdir -p "$root/usr/local/lib/kosmos"
+    sudo mkdir -p "$root/usr/local/lib/molniya"
     sudo install -m 0755 \
-        "$SELF_DIR/kosmos-boot-backend.sh" \
-        "$SELF_DIR/kosmos-mark-good.sh" \
-        "$root/usr/local/lib/kosmos/"
+        "$SELF_DIR/molniya-boot-backend.sh" \
+        "$SELF_DIR/molniya-mark-good.sh" \
+        "$root/usr/local/lib/molniya/"
 
     sudo mkdir -p "$root/etc/rauc"
     "$LAYOUT" rauc "$dev" | sudo tee "$root/etc/rauc/system.conf" > /dev/null
 
     install_keyring "$root" "$slot"
 
-    sudo install -m 0644 "$SELF_DIR/kosmos-mark-good.service" \
-        "$root/etc/systemd/system/kosmos-mark-good.service"
+    sudo install -m 0644 "$SELF_DIR/molniya-mark-good.service" \
+        "$root/etc/systemd/system/molniya-mark-good.service"
 
     # Enabled by symlink rather than `systemctl enable`: there is no running
     # systemd inside a loop-mounted image, and the result is visible in the
     # artifact instead of deferred to first boot. Same reasoning the assembler
     # uses for ssh.service.
     sudo mkdir -p "$root/etc/systemd/system/multi-user.target.wants"
-    sudo ln -sf /etc/systemd/system/kosmos-mark-good.service \
-        "$root/etc/systemd/system/multi-user.target.wants/kosmos-mark-good.service"
+    sudo ln -sf /etc/systemd/system/molniya-mark-good.service \
+        "$root/etc/systemd/system/multi-user.target.wants/molniya-mark-good.service"
 
     # Stage 2 installs the packages, so this only reports. It does NOT die: a
     # rootfs built with --prep-only, or an older one still in the build cache,

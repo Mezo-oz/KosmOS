@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================================
-# KosmOS — rtl_power CSV to spectrum heatmap
+# MolniyaOS — rtl_power CSV to spectrum heatmap
 # ============================================================================
 # Turns an rtl_power sweep into a picture of what the band was doing.
 #

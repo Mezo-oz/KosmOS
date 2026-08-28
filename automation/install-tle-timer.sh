@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================================
-# KosmOS — install the TLE refresh timer
+# MolniyaOS — install the TLE refresh timer
 # ============================================================================
 # Run this ON THE PI as root:
 #
@@ -11,10 +11,10 @@
 #   sudo bash automation/install-tle-timer.sh --uninstall
 #
 # WHAT IT CHANGES, exhaustively:
-#   installs  /usr/local/bin/kosmos-tle-update           (tle-updater.sh)
-#   installs  /etc/systemd/system/kosmos-tle-update@.service
-#   installs  /etc/systemd/system/kosmos-tle-update@.timer
-#   enables   kosmos-tle-update@<user>.timer
+#   installs  /usr/local/bin/molniya-tle-update           (tle-updater.sh)
+#   installs  /etc/systemd/system/molniya-tle-update@.service
+#   installs  /etc/systemd/system/molniya-tle-update@.timer
+#   enables   molniya-tle-update@<user>.timer
 #   runs      one update immediately, unless --no-run
 #
 # Nothing else. --uninstall reverses all of it.
@@ -40,12 +40,12 @@ set -euo pipefail
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 SCRIPT_SRC="$SELF_DIR/tle-updater.sh"
-SCRIPT_DST="/usr/local/bin/kosmos-tle-update"
-SERVICE_SRC="$SELF_DIR/kosmos-tle-update@.service"
-SERVICE_DST="/etc/systemd/system/kosmos-tle-update@.service"
-TIMER_SRC="$SELF_DIR/kosmos-tle-update@.timer"
-TIMER_DST="/etc/systemd/system/kosmos-tle-update@.timer"
-UNIT_BASE="kosmos-tle-update"
+SCRIPT_DST="/usr/local/bin/molniya-tle-update"
+SERVICE_SRC="$SELF_DIR/molniya-tle-update@.service"
+SERVICE_DST="/etc/systemd/system/molniya-tle-update@.service"
+TIMER_SRC="$SELF_DIR/molniya-tle-update@.timer"
+TIMER_DST="/etc/systemd/system/molniya-tle-update@.timer"
+UNIT_BASE="molniya-tle-update"
 
 TARGET_USER=""
 RUN_NOW=1
@@ -143,7 +143,7 @@ report_home() {
 # and the symlink is what `enable` actually created.
 uninstall() {
     local link instance
-    echo "Removing the KosmOS TLE timer..."
+    echo "Removing the MolniyaOS TLE timer..."
 
     for link in "/etc/systemd/system/timers.target.wants/${UNIT_BASE}@"*.timer; do
         [ -e "$link" ] || continue
@@ -188,7 +188,7 @@ if ! command -v curl > /dev/null 2>&1 && ! command -v wget > /dev/null 2>&1; the
 fi
 
 echo "============================================"
-echo "  KosmOS TLE Refresh Timer"
+echo "  MolniyaOS TLE Refresh Timer"
 echo "============================================"
 echo ""
 echo "  Target user: $TARGET_USER"

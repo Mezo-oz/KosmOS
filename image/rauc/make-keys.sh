@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================================
-# KosmOS — the update-signing PKI (Phase 4d)
+# MolniyaOS — the update-signing PKI (Phase 4d)
 # ============================================================================
 #   ./make-keys.sh ca   <ca-dir>              create the root CA
 #   ./make-keys.sh sign <ca-dir> <out-dir>    issue a signing key + cert
@@ -32,7 +32,7 @@
 # THE CA CERT IS DELIBERATELY NOT SHIPPED IN THIS REPO EITHER, and that is a
 # supply-chain decision, not an oversight. Committing ours would make it the
 # default trust root for every image anyone builds from this tree -- so a
-# box that is not ours would install bundles WE signed. Whoever builds KosmOS
+# box that is not ours would install bundles WE signed. Whoever builds MolniyaOS
 # generates their own CA. That is why provision-rauc.sh fails loudly with no
 # cert rather than falling back to one.
 #
@@ -57,21 +57,21 @@ SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Days. The CA outlives the hardware on purpose -- replacing it means reflashing
 # every device, so it is sized to never be the reason for one.
-CA_DAYS="${KOSMOS_CA_DAYS:-7300}"       # 20 years
-SIGN_DAYS="${KOSMOS_SIGN_DAYS:-1825}"   # 5 years
-BITS="${KOSMOS_KEY_BITS:-4096}"
+CA_DAYS="${MOLNIYA_CA_DAYS:-7300}"       # 20 years
+SIGN_DAYS="${MOLNIYA_SIGN_DAYS:-1825}"   # 5 years
+BITS="${MOLNIYA_KEY_BITS:-4096}"
 
-ORG="${KOSMOS_PKI_ORG:-KosmOS}"
+ORG="${MOLNIYA_PKI_ORG:-MolniyaOS}"
 
 # Passphrases. Unset means openssl prompts on the terminal, which is the right
-# default for a key a human is creating. Set KOSMOS_CA_PASS / KOSMOS_SIGN_PASS
+# default for a key a human is creating. Set MOLNIYA_CA_PASS / MOLNIYA_SIGN_PASS
 # and openssl reads them from the environment instead -- which is what makes
 # this script testable, and what lets a password manager drive it.
 #
 # `env:` and not `pass:`: with `pass:` the passphrase is an argv element and is
 # readable by any user via `ps` for as long as openssl runs.
-CA_PASS_VAR="KOSMOS_CA_PASS"
-SIGN_PASS_VAR="KOSMOS_SIGN_PASS"
+CA_PASS_VAR="MOLNIYA_CA_PASS"
+SIGN_PASS_VAR="MOLNIYA_SIGN_PASS"
 
 die()  { echo "make-keys.sh: $*" >&2; exit 1; }
 note() { echo "  $*" >&2; }
@@ -149,7 +149,7 @@ make_ca() {
     note ""
     note "ca.key.pem   SECRET. Offline media, not pi-server, not the repo."
     note "ca.cert.pem  public. This is what goes into the image:"
-    note "               export KOSMOS_RAUC_CERT=$dir/ca.cert.pem"
+    note "               export MOLNIYA_RAUC_CERT=$dir/ca.cert.pem"
     echo "$dir/ca.cert.pem"
 }
 
@@ -159,7 +159,7 @@ make_sign() {
     [ -f "$ca/ca.cert.pem" ] || die "$ca/ca.cert.pem: missing"
     prepare_dir "$dir"
 
-    local name="${KOSMOS_SIGN_CN:-$ORG Release Signing}"
+    local name="${MOLNIYA_SIGN_CN:-$ORG Release Signing}"
     step "signing cert -> $dir  (${BITS}-bit, ${SIGN_DAYS} days, CN=$name)"
 
     local csr="$dir/sign.csr"
@@ -191,8 +191,8 @@ make_sign() {
 
     note ""
     note "sign.key.pem   SECRET, but rotatable -- reissue from the CA any time."
-    note "               export KOSMOS_SIGN_KEY=$dir/sign.key.pem"
-    note "               export KOSMOS_SIGN_CERT=$dir/sign.cert.pem"
+    note "               export MOLNIYA_SIGN_KEY=$dir/sign.key.pem"
+    note "               export MOLNIYA_SIGN_CERT=$dir/sign.cert.pem"
     echo "$dir/sign.cert.pem"
 }
 

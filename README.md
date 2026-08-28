@@ -1,14 +1,14 @@
 <p align="center">
-  <img src="docs/kosmos-logo.png" alt="KosmOS" width="680">
+  <img src="docs/molniya-logo.png" alt="MolniyaOS" width="680">
 </p>
 
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
-# KosmOS
+# MolniyaOS
 
 A real-time Linux kernel build for the Raspberry Pi 5, tuned for software-defined
 radio and satellite reception.
 
-KosmOS is not a full distribution image. It is a set of scripts that build a custom
+MolniyaOS is not a full distribution image. It is a set of scripts that build a custom
 `PREEMPT_RT` kernel from the Raspberry Pi kernel source, install it **alongside** the
 stock Raspberry Pi OS kernel, and set up an SDR userspace toolchain on top. Your
 existing install stays bootable: every stock boot file is left byte-identical, and
@@ -22,7 +22,7 @@ samples. At 2.4 MS/s, a 1 ms scheduling delay loses roughly 2,400 samples, which
 shows up as tearing in a decoded satellite image or a corrupt frame in a packet
 decoder.
 
-KosmOS changes three things that matter:
+MolniyaOS changes three things that matter:
 
 - **`PREEMPT_RT`** — the kernel becomes fully preemptible, so a capture thread can
   interrupt kernel work instead of waiting behind it.
@@ -65,7 +65,7 @@ Expect 45–90 minutes for a full kernel build on four cores.
 |---|---|---|
 | `kernel/01-build-kernel.sh` | build host | Clones the Pi kernel, merges the config fragment, builds, packages a tarball |
 | `kernel/package-kernel.sh` | build host | Stages the built kernel and the Pi-side scripts into a tarball. Re-runnable without rebuilding |
-| `kernel/sdr-rt.config` | — | Kernel config fragment: the options KosmOS changes from `bcm2712_defconfig` |
+| `kernel/sdr-rt.config` | — | Kernel config fragment: the options MolniyaOS changes from `bcm2712_defconfig` |
 | `kernel/install-kernel.sh` | Pi | Installs the kernel, DTBs, overlays and cmdline into their own boot directory |
 | `userspace/02-post-install.sh` | Pi | Sequencer — runs the four scripts below in order |
 | `userspace/02a-verify-kernel.sh` | Pi | Verifies the running kernel. Read-only; installs nothing |
@@ -94,13 +94,13 @@ in the kernel tarball, because none of it is needed to get the kernel running.
 | `benchmarks/BENCHMARKS.md` | — | Methodology and results for the RT proof of claim |
 | `automation/tle-updater.sh` | Pi | Refreshes orbital elements; writes the file `predict` reads |
 | `automation/install-tle-timer.sh` | Pi | Installs the twice-daily TLE refresh timer for one user |
-| `automation/kosmos-tle-update@.service` | Pi | The refresh itself. Template unit — the instance name is the username |
-| `automation/kosmos-tle-update@.timer` | Pi | The schedule: 05:17 and 17:17, spread, and persistent across downtime |
+| `automation/molniya-tle-update@.service` | Pi | The refresh itself. Template unit — the instance name is the username |
+| `automation/molniya-tle-update@.timer` | Pi | The schedule: 05:17 and 17:17, spread, and persistent across downtime |
 | `automation/rtl-power-heatmap.py` | Pi | Plots an `rtl_power` CSV sweep as a spectrum heatmap PNG |
 | `automation/install-governor.sh` | Pi | Installs the boot-time performance-governor unit |
-| `automation/kosmos-governor.service` | Pi | The unit itself |
-| `automation/kosmos-set-governor.sh` | Pi | The governor write, installed to `/usr/local/sbin` |
-| `gr-kosmos/` | Pi | Out-of-tree GNU Radio blocks. Scaffold — see its README |
+| `automation/molniya-governor.service` | Pi | The unit itself |
+| `automation/molniya-set-governor.sh` | Pi | The governor write, installed to `/usr/local/sbin` |
+| `gr-molniya/` | Pi | Out-of-tree GNU Radio blocks. Scaffold — see its README |
 | `config/frequencies.md` | — | Frequency cheatsheet |
 | `config/antennas.md` | — | Which antenna for which mission |
 
@@ -115,8 +115,8 @@ findings on push and pull request.
 On the ARM64 build host:
 
 ```bash
-git clone https://github.com/Mezo-oz/KosmOS
-cd KosmOS
+git clone https://github.com/Mezo-oz/MolniyaOS
+cd MolniyaOS
 ./kernel/01-build-kernel.sh
 ```
 
@@ -138,33 +138,33 @@ afterwards so the state compiled is the state verified. Worth confirming there:
 - `Device Drivers → Multimedia support → Realtek RTL2832 SDR` → `M`
 
 Save and exit to start the build. The kernel source and all artifacts land in
-`~/kosmos/`, separate from the repo, so you can clone this anywhere.
+`~/molniya/`, separate from the repo, so you can clone this anywhere.
 
-Output: `~/kosmos/kosmos-kernel-<version>.tar.gz`, containing the kernel image,
+Output: `~/molniya/molniya-kernel-<version>.tar.gz`, containing the kernel image,
 modules, device tree blobs, and both Pi-side scripts.
 
 ### 2. Install on the Pi
 
 ```bash
 # from the build host
-scp ~/kosmos/kosmos-kernel-*.tar.gz pi@<PI_IP>:~/
+scp ~/molniya/molniya-kernel-*.tar.gz pi@<PI_IP>:~/
 
 # on the Pi
-mkdir -p ~/kosmos-kernel
-tar xzf ~/kosmos-kernel-*.tar.gz -C ~/kosmos-kernel
-sudo bash ~/kosmos-kernel/install-kernel.sh
+mkdir -p ~/molniya-kernel
+tar xzf ~/molniya-kernel-*.tar.gz -C ~/molniya-kernel
+sudo bash ~/molniya-kernel/install-kernel.sh
 sudo reboot
 ```
 
-Everything KosmOS boots is installed into its own directory, `kosmos/`, on the boot
+Everything MolniyaOS boots is installed into its own directory, `molniya/`, on the boot
 partition — kernel image, device tree blobs, overlays and command line. Modules go to
 their own versioned directory under `/lib/modules/`. The installer then adds a `[pi5]`
-block to `config.txt` setting `os_prefix=kosmos/`, which is the firmware mechanism for
+block to `config.txt` setting `os_prefix=molniya/`, which is the firmware mechanism for
 loading a completely separate set of boot files.
 
 **`config.txt` is the only stock file modified.** The stock kernel, its device trees,
 its overlays and `cmdline.txt` are all left byte-identical, so the stock kernel keeps
-booting against its own device trees rather than KosmOS's. That matters for reverting,
+booting against its own device trees rather than MolniyaOS's. That matters for reverting,
 and it matters for the RT benchmark, where the entire comparison rests on nothing
 differing between the two boots except the kernel.
 
@@ -172,7 +172,7 @@ differing between the two boots except the kernel.
 Until that moment the Pi still boots exactly as it did before, so an interrupted or
 failed install cannot leave you unable to boot.
 
-The KosmOS kernel command line is derived from the stock `cmdline.txt` — so `root=`
+The MolniyaOS kernel command line is derived from the stock `cmdline.txt` — so `root=`
 and friends carry over unchanged — with `nohz_full` and `rcu_nocbs` appended to
 activate full dynticks on CPUs 1–3, leaving CPU 0 as the housekeeping core. Set
 `NOHZ_FULL_CPUS=""` at the top of `kernel/install-kernel.sh` to disable that.
@@ -180,7 +180,7 @@ activate full dynticks on CPUs 1–3, leaving CPU 0 as the housekeeping core. Se
 ### 3. Verify and install SDR tools
 
 ```bash
-~/kosmos-kernel/02-post-install.sh
+~/molniya-kernel/02-post-install.sh
 ```
 
 It first checks the running kernel — version string, `/sys/kernel/realtime`, timer
@@ -190,7 +190,7 @@ stage is `02a-verify-kernel.sh` and can be run on its own, on any kernel, as oft
 as you like:
 
 ```bash
-~/kosmos-kernel/02a-verify-kernel.sh
+~/molniya-kernel/02a-verify-kernel.sh
 ```
 
 It then offers two installs independently, each with its own prompt:
@@ -214,36 +214,36 @@ rtl_test -t
 ## Verifying the kernel
 
 ```bash
-uname -r                    # should contain "kosmos"
+uname -r                    # should contain "molniya"
 cat /sys/kernel/realtime    # should print 1
 cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor   # performance
 ```
 
 `uname -r` is the reliable check: `kernel/sdr-rt.config` sets
-`CONFIG_LOCALVERSION="-kosmos"`, so the version string is unambiguous. If it does not
-contain `kosmos`, you booted the stock kernel.
+`CONFIG_LOCALVERSION="-molniya"`, so the version string is unambiguous. If it does not
+contain `molniya`, you booted the stock kernel.
 
 ## Reverting
 
 If the Pi boots and you can SSH in:
 
 ```bash
-sudo sed -i '/--- KosmOS custom kernel/,/--- end KosmOS/d' /boot/firmware/config.txt
+sudo sed -i '/--- MolniyaOS custom kernel/,/--- end MolniyaOS/d' /boot/firmware/config.txt
 sudo reboot
 ```
 
 If it does not boot: pull the SD card, mount the boot partition on another machine (it
-is FAT32), and delete the block between the `--- KosmOS custom kernel` and
-`--- end KosmOS` markers in `config.txt`. The firmware falls back to the untouched
+is FAT32), and delete the block between the `--- MolniyaOS custom kernel` and
+`--- end MolniyaOS` markers in `config.txt`. The firmware falls back to the untouched
 stock kernel. A copy of the original `config.txt` is also saved in the timestamped
 `backup-*` directory alongside it.
 
 Either way this restores `config.txt` byte-for-byte, and repeated
 install/revert cycles leave no residue. Nothing else needs undoing, because nothing
-else was changed — the `kosmos/` directory can be left in place or deleted.
+else was changed — the `molniya/` directory can be left in place or deleted.
 
 To switch kernels for the RT benchmark, comment out the two directives inside that
-block to boot stock, and uncomment them to boot KosmOS.
+block to boot stock, and uncomment them to boot MolniyaOS.
 
 ## What the config fragment changes
 
@@ -316,7 +316,7 @@ stay in English regardless.
   what gets built. If a pin ever fails to verify, that is a moved tag or a
   force-push upstream — read the history and bump the tag and SHA together rather
   than removing the check. Revisions installed are appended to
-  `/usr/local/share/kosmos/build-manifest.txt`.
+  `/usr/local/share/molniya/build-manifest.txt`.
 - `kernel/01-build-kernel.sh` is *not* pinned: it clones `raspberrypi/linux` at
   branch `rpi-6.12.y`, whose tip moves. Two kernel builds weeks apart are not the
   same kernel.
@@ -344,7 +344,7 @@ rtl_fm -f 137.1M -s 48000 -g 48 -E dc -A fast noaa19.raw
 sox -r 48000 -es -b 16 -c 1 -t raw noaa19.raw noaa19.wav
 ```
 
-Decoding the WAV to an image needs a decoder that KosmOS does not install — 
+Decoding the WAV to an image needs a decoder that MolniyaOS does not install — 
 [SatDump](https://github.com/SatDump/SatDump) is the usual choice, and can also run
 the whole capture in one step.
 
@@ -428,7 +428,7 @@ dBm.
 ### Keeping them fresh without remembering to
 
 An unattended box should not depend on someone running that command. Install the
-timer instead — twice daily, spread by up to 15 minutes so every KosmOS install
+timer instead — twice daily, spread by up to 15 minutes so every MolniyaOS install
 does not hit CelesTrak on the same minute, and persistent so a box that was off
 through both windows updates when it comes back rather than staying a day stale:
 
@@ -446,8 +446,8 @@ The install runs one update immediately (`--no-run` to skip), so you find out
 then rather than during a pass. After that, the unit's exit status is the answer:
 
 ```bash
-systemctl status kosmos-tle-update@homelab.service
-systemctl list-timers kosmos-tle-update@homelab.timer
+systemctl status molniya-tle-update@homelab.service
+systemctl list-timers molniya-tle-update@homelab.timer
 ```
 
 `tle-updater.sh` exits non-zero if any source failed to fetch or validate, and it
@@ -458,7 +458,7 @@ header does the same job with less reporting.
 
 ## License
 
-KosmOS's own code — every script in this repository and the documentation — is
+MolniyaOS's own code — every script in this repository and the documentation — is
 licensed under the **GNU General Public License, version 3 or later**. The full
 text is in [`LICENSE`](LICENSE).
 
@@ -470,7 +470,7 @@ saying which of the two applies to it, so the answer is always in the file rathe
 than inferred from this section.
 
 ```
-Copyright (C) 2026 the KosmOS authors
+Copyright (C) 2026 the MolniyaOS authors
 
 This program is free software: you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -487,7 +487,7 @@ PARTICULAR PURPOSE.  See the GNU General Public License for more details.
 **`raspberrypi/linux` is GPL-2.0-only, and stays that way.** Nothing here changes
 that, and nothing here could.
 
-KosmOS ships no kernel source. What it ships is a build recipe: `01-build-kernel.sh`
+MolniyaOS ships no kernel source. What it ships is a build recipe: `01-build-kernel.sh`
 clones the Raspberry Pi kernel from upstream, merges `sdr-rt.config` over
 `bcm2712_defconfig`, and compiles it. The kernel you end up with is upstream's
 code under upstream's licence — GPL-2.0-only, plus the syscall exception — and if
@@ -498,8 +498,8 @@ So there are two licences in play and they cover different things:
 
 | What | Licence | Whose code |
 |---|---|---|
-| Scripts, docs, `gr-kosmos/` | GPL-3.0-or-later | KosmOS |
-| `kernel/sdr-rt.config` | GPL-2.0-only | KosmOS |
+| Scripts, docs, `gr-molniya/` | GPL-3.0-or-later | MolniyaOS |
+| `kernel/sdr-rt.config` | GPL-2.0-only | MolniyaOS |
 | The kernel that gets built | GPL-2.0-only (upstream) | Raspberry Pi / Linux |
 | Everything `02c`/`03` install | each project's own terms | upstream |
 
@@ -512,5 +512,5 @@ argument.
 
 The tools the userspace scripts install keep their own licences. `02c` and `03`
 build from upstream sources and change none of them; the pinned revision of each
-is recorded in `/usr/local/share/kosmos/build-manifest.txt`, which is also where
+is recorded in `/usr/local/share/molniya/build-manifest.txt`, which is also where
 to look when you need to know exactly whose code is on the box.

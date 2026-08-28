@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================================
-# gr-kosmos — install for development use
+# gr-molniya — install for development use
 # ============================================================================
 # Run this ON THE PI, after userspace/03a-gnuradio-stack.sh:
 #
-#   ./gr-kosmos/install.sh
-#   ./gr-kosmos/install.sh --uninstall
+#   ./gr-molniya/install.sh
+#   ./gr-molniya/install.sh --uninstall
 #
 # WHAT IT CHANGES, exhaustively:
-#   writes  <python user site>/gr-kosmos.pth        makes `import kosmos` work
-#   copies  <gnuradio prefix>/share/gnuradio/grc/blocks/kosmos_*.block.yml
+#   writes  <python user site>/gr-molniya.pth        makes `import molniya` work
+#   copies  <gnuradio prefix>/share/gnuradio/grc/blocks/molniya_*.block.yml
 #
 # The .pth file points at this directory rather than copying the package, so
-# editing python/kosmos/*.py takes effect on the next flowgraph run with no
+# editing python/molniya/*.py takes effect on the next flowgraph run with no
 # reinstall step. That is the whole reason this is not a package install: the
 # block is being developed, not shipped.
 #
@@ -30,7 +30,7 @@ set -euo pipefail
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-PTH_NAME="gr-kosmos.pth"
+PTH_NAME="gr-molniya.pth"
 PACKAGE_DIR="$SELF_DIR/python"
 GRC_SRC_DIR="$SELF_DIR/grc"
 
@@ -113,7 +113,7 @@ if ! python3 -c 'import gnuradio' > /dev/null 2>&1; then
 fi
 
 echo "============================================"
-echo "  gr-kosmos (development install)"
+echo "  gr-molniya (development install)"
 echo "============================================"
 echo ""
 
@@ -145,7 +145,7 @@ fi
 # --- 3. Verify -------------------------------------------------------------
 
 echo "[3/3] Verifying the import..."
-if python3 -c 'import kosmos; print("      kosmos", kosmos.__file__)'; then
+if python3 -c 'import molniya; print("      molniya", molniya.__file__)'; then
     echo ""
     echo "  Installed."
     echo ""
@@ -153,11 +153,11 @@ if python3 -c 'import kosmos; print("      kosmos", kosmos.__file__)'; then
     echo "  nothing. It is safe to put in a flowgraph and it will not tell you"
     echo "  anything yet."
     echo ""
-    echo "  Restart GRC to see it under the KosmOS category."
+    echo "  Restart GRC to see it under the MolniyaOS category."
     echo "  To remove: $0 --uninstall"
 else
     echo ""
-    echo "ERROR: 'import kosmos' still fails." >&2
+    echo "ERROR: 'import molniya' still fails." >&2
     echo "       The .pth file was written to the user site directory, which" >&2
     echo "       python3 only reads if user site is enabled. Check with:" >&2
     echo "         python3 -c 'import site; print(site.ENABLE_USER_SITE)'" >&2

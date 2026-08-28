@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================================
-# KosmOS — boot health check (Phase 4d)
+# MolniyaOS — boot health check (Phase 4d)
 # ============================================================================
 # Decides whether the slot we just booted is good. Its EXIT CODE IS THE VERDICT:
 #
@@ -48,7 +48,7 @@
 set -euo pipefail
 
 if [ "$#" -gt 0 ]; then
-    echo "kosmos-health-check: takes no arguments (got: $*)" >&2
+    echo "molniya-health-check: takes no arguments (got: $*)" >&2
     echo "  exit 0 = healthy, non-zero = do not mark this slot good" >&2
     exit 2
 fi
@@ -90,17 +90,17 @@ advisory_warn() {
 
 # --- CRITICAL: this kernel is ours -----------------------------------------
 #
-# CONFIG_LOCALVERSION="-kosmos" is what puts the string there. Matching only
-# "kosmos" is the point: the older pattern also accepted "rt" or "6.12", which
+# CONFIG_LOCALVERSION="-molniya" is what puts the string there. Matching only
+# "molniya" is the point: the older pattern also accepted "rt" or "6.12", which
 # a stock Raspberry Pi OS kernel satisfies, so it passed whether or not the
 # custom kernel was running.
 check_kernel_localversion() {
     local kver
     kver=$(uname -r)
-    if printf '%s' "$kver" | grep -qi "kosmos"; then
-        ok "kernel is KosmOS" "$kver"
+    if printf '%s' "$kver" | grep -qi "molniya"; then
+        ok "kernel is MolniyaOS" "$kver"
     else
-        critical_fail "kernel is KosmOS" "$kver — no '-kosmos' in uname -r"
+        critical_fail "kernel is MolniyaOS" "$kver — no '-molniya' in uname -r"
     fi
 }
 
@@ -179,18 +179,18 @@ check_watchdog() {
     esac
 }
 
-# --- CRITICAL: gr-kosmos is really importable -------------------------------
+# --- CRITICAL: gr-molniya is really importable -------------------------------
 #
 # Import a SUBMODULE, never the bare package, and always with -P. `import
-# kosmos` alone PASSES on a box with no gr-kosmos installed: Python invents a
-# namespace package from any kosmos/ directory on sys.path, and the cwd is on
+# molniya` alone PASSES on a box with no gr-molniya installed: Python invents a
+# namespace package from any molniya/ directory on sys.path, and the cwd is on
 # that path. Caught doing exactly that on pi-server 2026-08-23. A submodule
 # import has no namespace package to satisfy it, and -P removes the cwd from
 # the path entirely, so the answer cannot depend on where the service started.
 #
-# Two checks, not one: kosmos/__init__.py re-exports the probe, which imports
+# Two checks, not one: molniya/__init__.py re-exports the probe, which imports
 # gnuradio.gr, so any import drags in the whole stack and a single check would
-# blame gr-kosmos for a missing GNU Radio. Full write-up in ROADMAP.md 4d.
+# blame gr-molniya for a missing GNU Radio. Full write-up in ROADMAP.md 4d.
 check_gnuradio() {
     if ! command -v python3 > /dev/null 2>&1; then
         critical_fail "GNU Radio imports" "no python3 on PATH"
@@ -204,17 +204,17 @@ check_gnuradio() {
     fi
 }
 
-check_gr_kosmos() {
+check_gr_molniya() {
     if ! command -v python3 > /dev/null 2>&1; then
-        critical_fail "gr-kosmos imports" "no python3 on PATH"
+        critical_fail "gr-molniya imports" "no python3 on PATH"
         return
     fi
 
-    if python3 -P -c "from kosmos import gap_math" > /dev/null 2>&1; then
-        ok "gr-kosmos imports" "from kosmos import gap_math"
+    if python3 -P -c "from molniya import gap_math" > /dev/null 2>&1; then
+        ok "gr-molniya imports" "from molniya import gap_math"
     else
-        critical_fail "gr-kosmos imports" \
-            "'from kosmos import gap_math' failed under python3 -P"
+        critical_fail "gr-molniya imports" \
+            "'from molniya import gap_math' failed under python3 -P"
     fi
 }
 
@@ -239,13 +239,13 @@ check_satcom_binaries() {
 
 # --- CRITICAL: the TLE units ship with the image ----------------------------
 #
-# The unit FILES, not an enabled instance. kosmos-tle-update@.service is a
+# The unit FILES, not an enabled instance. molniya-tle-update@.service is a
 # template keyed on username, so which instance exists is a site decision,
 # while the template itself is part of the image and its absence means the
 # update dropped a component.
 check_tle_units() {
     local missing="" unit
-    for unit in kosmos-tle-update@.service kosmos-tle-update@.timer; do
+    for unit in molniya-tle-update@.service molniya-tle-update@.timer; do
         if ! systemctl cat "$unit" > /dev/null 2>&1; then
             missing="$missing $unit"
         fi
@@ -344,10 +344,10 @@ check_sdr_device() {
 check_tle_state() {
     local instances
     instances=$(systemctl list-units --type=timer --all --no-legend --plain \
-        "kosmos-tle-update@*.timer" 2>/dev/null | awk '{print $1}' || true)
+        "molniya-tle-update@*.timer" 2>/dev/null | awk '{print $1}' || true)
 
     if [ -z "$instances" ]; then
-        advisory_warn "TLE timer instance" "no kosmos-tle-update@*.timer loaded"
+        advisory_warn "TLE timer instance" "no molniya-tle-update@*.timer loaded"
         return
     fi
 
@@ -365,7 +365,7 @@ check_tle_state() {
 # --- Run ---------------------------------------------------------------------
 
 echo "============================================"
-echo "  KosmOS slot health check"
+echo "  MolniyaOS slot health check"
 echo "============================================"
 echo "  kernel:  $(uname -r)"
 echo "  host:    $(uname -n)"
@@ -375,7 +375,7 @@ check_kernel_localversion
 check_rt_preempt
 check_watchdog
 check_gnuradio
-check_gr_kosmos
+check_gr_molniya
 check_satcom_binaries
 check_tle_units
 check_slot_identity

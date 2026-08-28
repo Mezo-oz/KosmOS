@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================================
-# KosmOS — refresh orbital elements from CelesTrak
+# MolniyaOS — refresh orbital elements from CelesTrak
 # ============================================================================
 # Install with automation/install-tle-timer.sh. Paired with
-# kosmos-tle-update@.timer, which is what schedules it; this unit on its own
+# molniya-tle-update@.timer, which is what schedules it; this unit on its own
 # only defines how one update runs.
 #
 # WHY THIS EXISTS:
@@ -16,7 +16,7 @@
 #   tle-updater.sh writes to ~/.predict/predict.tle and
 #   ~/.config/satellite-tle/, so it must run as the human who will read those
 #   files, not as root — root's ~/.predict is a directory nobody ever opens.
-#   The instance name is that username: kosmos-tle-update@homelab.timer runs it
+#   The instance name is that username: molniya-tle-update@homelab.timer runs it
 #   as homelab. A template gets this from systemd's own %i expansion, so the
 #   repo ships a complete valid unit instead of a file the installer has to
 #   rewrite with sed before it parses.
@@ -40,15 +40,15 @@
 # ============================================================================
 
 [Unit]
-Description=KosmOS: update TLE orbital elements for %i
-Documentation=https://github.com/Mezo-oz/KosmOS
+Description=MolniyaOS: update TLE orbital elements for %i
+Documentation=https://github.com/Mezo-oz/MolniyaOS
 Wants=network-online.target
 After=network-online.target
 
 [Service]
 Type=oneshot
 User=%i
-ExecStart=/usr/local/bin/kosmos-tle-update
+ExecStart=/usr/local/bin/molniya-tle-update
 TimeoutStartSec=600
 
 # The script fetches over the network and writes into one user's home. It needs

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 10-kosmos — KosmOS dynamic MOTD (login banner + appliance status)
+# 10-molniya — MolniyaOS dynamic MOTD (login banner + appliance status)
 #
 # The star field above the wordmark is NOT decoration: it is derived
 # deterministically from the SHA-256 of the flashed image (same idea as
@@ -8,9 +8,9 @@
 # sky. A human won't diff 64 hex chars, but will notice a different sky.
 #
 # Digest source, in order of precedence:
-#   1. $KOSMOS_IMAGE_DIGEST            (env override — testing/preview)
-#   2. /etc/kosmos/image-digest        (stamped by the build; see NOTE)
-#   3. none → the default sky, sha256("KosmOS"), and status shows "unstamped"
+#   1. $MOLNIYA_IMAGE_DIGEST            (env override — testing/preview)
+#   2. /etc/molniya/image-digest        (stamped by the build; see NOTE)
+#   3. none → the default sky, sha256("MolniyaOS"), and status shows "unstamped"
 #
 # NOTE (build side): an artifact cannot contain its own hash — embedding it
 # changes the hash. Stamp the digest of the assembled rootfs at a defined
@@ -18,9 +18,9 @@
 # SHA256SUMS. Slots installed via RAUC can instead be stamped with the bundle
 # digest RAUC verified at install time.
 #
-# Install:  sudo install -m 0755 10-kosmos /etc/update-motd.d/10-kosmos
-# Preview:  ./10-kosmos [--small] [--plain]
-#           KOSMOS_IMAGE_DIGEST=$(sha256sum some.img | cut -d' ' -f1) ./10-kosmos
+# Install:  sudo install -m 0755 10-molniya /etc/update-motd.d/10-molniya
+# Preview:  ./10-molniya [--small] [--plain]
+#           MOLNIYA_IMAGE_DIGEST=$(sha256sum some.img | cut -d' ' -f1) ./10-molniya
 #
 # Contract (standard 8): the banner IS this script's product → stdout.
 # Every status probe degrades to "unavailable"; a broken probe must never
@@ -28,8 +28,8 @@
 
 set -euo pipefail
 
-readonly KOSMOS_LIB="/usr/local/lib/kosmos"
-readonly DIGEST_FILE="/etc/kosmos/image-digest"
+readonly MOLNIYA_LIB="/usr/local/lib/molniya"
+readonly DIGEST_FILE="/etc/molniya/image-digest"
 
 # Sky geometry: 4 rows of stars, columns 0..38, Saturn fixed to the right.
 readonly SKY_ROWS=4
@@ -55,8 +55,8 @@ IMAGE_DIGEST=""          # 64 lowercase hex chars when stamped, else empty
 
 load_digest() {
   local candidate=""
-  if [[ -n "${KOSMOS_IMAGE_DIGEST:-}" ]]; then
-    candidate="$KOSMOS_IMAGE_DIGEST"
+  if [[ -n "${MOLNIYA_IMAGE_DIGEST:-}" ]]; then
+    candidate="$MOLNIYA_IMAGE_DIGEST"
   elif [[ -r "$DIGEST_FILE" ]]; then
     candidate="$(head -n 1 "$DIGEST_FILE" 2>/dev/null)" || candidate=""
   fi
@@ -68,11 +68,11 @@ load_digest() {
 
 sky_seed() {
   # The digest that positions the stars: the image's when stamped,
-  # otherwise sha256("KosmOS") so an unstamped box still gets a stable sky.
+  # otherwise sha256("MolniyaOS") so an unstamped box still gets a stable sky.
   if [[ -n "$IMAGE_DIGEST" ]]; then
     printf '%s' "$IMAGE_DIGEST"
   else
-    printf 'KosmOS' | sha256sum | cut -d' ' -f1
+    printf 'MolniyaOS' | sha256sum | cut -d' ' -f1
   fi
 }
 
@@ -119,16 +119,16 @@ print_sky_and_planet() {
 print_wordmark() {
   printf '%s' "$C_WORD"
   cat <<'EOF'
-██╗  ██╗ ██████╗ ███████╗███╗   ███╗ ██████╗ ███████╗
-██║ ██╔╝██╔═══██╗██╔════╝████╗ ████║██╔═══██╗██╔════╝
-█████╔╝ ██║   ██║███████╗██╔████╔██║██║   ██║███████╗
-██╔═██╗ ██║   ██║╚════██║██║╚██╔╝██║██║   ██║╚════██║
-██║  ██╗╚██████╔╝███████║██║ ╚═╝ ██║╚██████╔╝███████║
-╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝     ╚═╝ ╚═════╝ ╚══════╝
+███╗   ███╗ ██████╗ ██╗     ███╗   ██╗██╗██╗   ██╗ █████╗
+████╗ ████║██╔═══██╗██║     ████╗  ██║██║╚██╗ ██╔╝██╔══██╗
+██╔████╔██║██║   ██║██║     ██╔██╗ ██║██║ ╚████╔╝ ███████║
+██║╚██╔╝██║██║   ██║██║     ██║╚██╗██║██║  ╚██╔╝  ██╔══██║
+██║ ╚═╝ ██║╚██████╔╝███████╗██║ ╚████║██║   ██║   ██║  ██║
+╚═╝     ╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝╚═╝   ╚═╝   ╚═╝  ╚═╝
 EOF
   printf '%s' "$C_TAG"
   cat <<'EOF'
-      ── built from bare metal · aimed at the stars ──
+       ── built from bare metal · aimed at the stars ──
 EOF
   printf '%s' "$C_RESET"
 }
@@ -136,10 +136,11 @@ EOF
 print_banner_small() {
   printf '%s' "$C_WORD"
   cat <<'EOF'
-   __ __               ____  ____
-  / //_/__  ___ __ _  / __ \/ __/
- / ,< / _ \(_-</  ' \/ /_/ /\ \
-/_/|_|\___/___/_/_/_/\____/___/
+   __  ___     __     _           ____  ____
+  /  |/  /__  / /__  (_)_ _____ _/ __ \/ __/
+ / /|_/ / _ \/ / _ \/ / // / _ `/ /_/ /\ \
+/_/  /_/\___/_/_//_/_/\_, /\_,_/\____/___/
+                     /___/
 EOF
   printf '%s── bare metal → stars ──%s\n' "$C_TAG" "$C_RESET"
 }
@@ -158,8 +159,8 @@ probe_kernel() {
 
 probe_slot() {
   local out slot verdict
-  [[ -x "$KOSMOS_LIB/slot-identity.sh" ]] || { printf 'unavailable'; return 0; }
-  out="$("$KOSMOS_LIB/slot-identity.sh" 2>/dev/null)" || { printf 'unavailable'; return 0; }
+  [[ -x "$MOLNIYA_LIB/slot-identity.sh" ]] || { printf 'unavailable'; return 0; }
+  out="$("$MOLNIYA_LIB/slot-identity.sh" 2>/dev/null)" || { printf 'unavailable'; return 0; }
   slot="$(grep -oE 'SLOT=[AB]' <<<"$out" | head -n 1 | cut -d= -f2)" || true
   verdict="$(grep -oE 'VERDICT=[a-z]+' <<<"$out" | head -n 1 | cut -d= -f2)" || true
   printf '%s (%s)' "${slot:-?}" "${verdict:-unknown}"
@@ -167,7 +168,7 @@ probe_slot() {
 
 probe_markgood() {
   local result
-  result="$(systemctl show kosmos-mark-good.service -p Result --value 2>/dev/null)" || result=""
+  result="$(systemctl show molniya-mark-good.service -p Result --value 2>/dev/null)" || result=""
   case "$result" in
     success) printf 'committed' ;;
     "")      printf 'unavailable' ;;
@@ -215,7 +216,7 @@ main() {
   done
 
   [[ -n "${NO_COLOR:-}" ]] && want_color=0
-  [[ "${KOSMOS_MOTD_COLOR:-}" == "never" ]] && want_color=0
+  [[ "${MOLNIYA_MOTD_COLOR:-}" == "never" ]] && want_color=0
   (( want_color )) && enable_color
 
   load_digest

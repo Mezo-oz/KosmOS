@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================================
-# KosmOS Post-Install 02d — Russian Locale (optional, personal preference)
+# MolniyaOS Post-Install 02d — Russian Locale (optional, personal preference)
 # ============================================================================
-# Run this ON THE PI. Nothing else in KosmOS depends on it, and nothing breaks
+# Run this ON THE PI. Nothing else in MolniyaOS depends on it, and nothing breaks
 # if you never run it — it is the author's preference, not an SDR feature.
 #
 # WHAT THIS DOES:

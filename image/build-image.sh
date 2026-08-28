@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================================
-# KosmOS — the release artifact (Phase 4a, stage 4)
+# MolniyaOS — the release artifact (Phase 4a, stage 4)
 # ============================================================================
 # Sequences stages 1-3, slims the result, records what was built, verifies it,
 # and hands over a compressed image.
@@ -19,7 +19,7 @@
 # between a failed boot test costing minutes and costing two hours, at exactly
 # the moment first boots are most likely to fail.
 #
-#   ssh pi-server 'kosmos-img/build-image.sh --stream' > kosmos-rpi5.img.gz
+#   ssh pi-server 'molniya-img/build-image.sh --stream' > molniya-rpi5.img.gz
 #
 # The image has to leave this box anyway: nothing here can flash it (one block
 # device, the card it runs from), so the card is written from another machine.
@@ -39,10 +39,10 @@
 set -euo pipefail
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CACHE="${KOSMOS_BUILD_CACHE:-/var/tmp/kosmos-build}"
-IMG="$CACHE/kosmos-rpi5.img"
-KERNEL_TARBALL="${KOSMOS_KERNEL_TARBALL:-$HOME/kosmos/kosmos-kernel-6.12.98-kosmos+.tar.gz}"
-AUTHORIZED_KEYS="${KOSMOS_AUTHORIZED_KEYS:-$CACHE/authorized_keys}"
+CACHE="${MOLNIYA_BUILD_CACHE:-/var/tmp/molniya-build}"
+IMG="$CACHE/molniya-rpi5.img"
+KERNEL_TARBALL="${MOLNIYA_KERNEL_TARBALL:-$HOME/molniya/molniya-kernel-6.12.98-molniya+.tar.gz}"
+AUTHORIZED_KEYS="${MOLNIYA_AUTHORIZED_KEYS:-$CACHE/authorized_keys}"
 
 MOUNTED=()
 LOOPDEV=""
@@ -229,7 +229,7 @@ usage() { sed -n '7,11p' "$SELF_DIR/build-image.sh" | sed 's/^# \{0,2\}//'; }
 
 # The path is this script's normal stdout, in the same style as fetch-base.sh --
 # but under --stream stdout is the image itself, and one more line on it appends
-# "/var/tmp/.../kosmos-rpi5.img\n" to the gzip stream. gzip ignores trailing
+# "/var/tmp/.../molniya-rpi5.img\n" to the gzip stream. gzip ignores trailing
 # junk, so the .gz still decompresses; the corruption is invisible until a
 # byte-for-byte comparison or a checksum. Which is exactly why the digest is
 # taken of the raw image and checked on the far side.

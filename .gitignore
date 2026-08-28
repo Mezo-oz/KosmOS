@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 linux/
-kosmos-kernel-pkg/
-kosmos-kernel-*.tar.gz
+molniya-kernel-pkg/
+molniya-kernel-*.tar.gz
 *.o
 
-# Running gr-kosmos's unit tests produces these. They only started appearing
+# Running gr-molniya's unit tests produces these. They only started appearing
 # once there were tests that could actually be run off the Pi.
 __pycache__/
 *.pyc

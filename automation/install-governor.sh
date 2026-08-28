@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================================
-# KosmOS — install the performance-governor unit
+# MolniyaOS — install the performance-governor unit
 # ============================================================================
 # Run this ON THE PI as root:
 #
@@ -9,9 +9,9 @@
 #   sudo bash automation/install-governor.sh --uninstall
 #
 # WHAT IT CHANGES, exhaustively:
-#   installs  /usr/local/sbin/kosmos-set-governor
-#   installs  /etc/systemd/system/kosmos-governor.service
-#   enables   kosmos-governor.service
+#   installs  /usr/local/sbin/molniya-set-governor
+#   installs  /etc/systemd/system/molniya-governor.service
+#   enables   molniya-governor.service
 #   masks     ondemand.service, only if that unit exists
 #
 # Nothing else. --uninstall reverses all four, including unmasking
@@ -26,18 +26,18 @@
 #
 # BENCHMARK NOTE: with this installed, both kernels run at a pinned clock, which
 # is what makes the A/B fair. Reverting to ondemand for a comparison is
-# `sudo kosmos-set-governor ondemand` for the session, or --uninstall to persist.
+# `sudo molniya-set-governor ondemand` for the session, or --uninstall to persist.
 # ============================================================================
 
 set -euo pipefail
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-HELPER_SRC="$SELF_DIR/kosmos-set-governor.sh"
-HELPER_DST="/usr/local/sbin/kosmos-set-governor"
-UNIT_SRC="$SELF_DIR/kosmos-governor.service"
-UNIT_DST="/etc/systemd/system/kosmos-governor.service"
-UNIT_NAME="kosmos-governor.service"
+HELPER_SRC="$SELF_DIR/molniya-set-governor.sh"
+HELPER_DST="/usr/local/sbin/molniya-set-governor"
+UNIT_SRC="$SELF_DIR/molniya-governor.service"
+UNIT_DST="/etc/systemd/system/molniya-governor.service"
+UNIT_NAME="molniya-governor.service"
 CONFLICTING_UNIT="ondemand.service"
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -56,7 +56,7 @@ read_governor() {
 }
 
 uninstall() {
-    echo "Removing the KosmOS governor unit..."
+    echo "Removing the MolniyaOS governor unit..."
 
     if systemctl list-unit-files "$UNIT_NAME" > /dev/null 2>&1; then
         systemctl disable --now "$UNIT_NAME" 2>/dev/null || true
@@ -97,7 +97,7 @@ for f in "$HELPER_SRC" "$UNIT_SRC"; do
 done
 
 echo "============================================"
-echo "  KosmOS Performance Governor"
+echo "  MolniyaOS Performance Governor"
 echo "============================================"
 echo ""
 echo "  Governor before: $(read_governor)"

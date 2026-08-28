@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================================
-# KosmOS — shellcheck CI gate
+# MolniyaOS — shellcheck CI gate
 # ============================================================================
 # ROADMAP engineering standard 5: "shellcheck clean at zero warnings — the analog
 # of NASA rule 10 (all warnings on, all warnings fixed)". It was verified by hand

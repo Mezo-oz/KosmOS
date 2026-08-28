@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================================
-# KosmOS — which A/B slot am I actually running? (Phase 4d)
+# MolniyaOS — which A/B slot am I actually running? (Phase 4d)
 # ============================================================================
 # Prints facts on stdout as KEY=VALUE. It renders no verdict: the caller decides
 # what a mismatch is worth. Same shape as benchmarks/detect-config.sh,
@@ -19,14 +19,14 @@
 #   consistent   boot partition and root partition are the same slot
 #   mismatch     they are different slots -- a cross-slot boot
 #   unmapped     the layout is known but this pairing is not in it
-#   no-slotmap   /etc/kosmos/slots.conf absent; not an A/B image
+#   no-slotmap   /etc/molniya/slots.conf absent; not an A/B image
 #
 # Exit 0 whenever the facts could be gathered, whatever they say -- including
 # `mismatch`. A non-zero exit means the question could not be ANSWERED (no
 # device tree, unreadable root device), which is a different thing from a bad
 # answer and the caller must be able to tell them apart.
 #
-# WHY THIS IS NOT IN kosmos-health-check.sh: that file was at 372 of its 400
+# WHY THIS IS NOT IN molniya-health-check.sh: that file was at 372 of its 400
 # lines, and ROADMAP's extraction rule fires on a file that exceeds the cap and
 # cannot lose the lines elsewhere. It was also flagged in the ROADMAP one commit
 # before this one as the file whose next addition would have to go beside it.
@@ -40,7 +40,7 @@
 set -euo pipefail
 
 DT_BOOTLOADER="/proc/device-tree/chosen/bootloader"
-SLOTMAP="${KOSMOS_SLOTMAP:-/etc/kosmos/slots.conf}"
+SLOTMAP="${MOLNIYA_SLOTMAP:-/etc/molniya/slots.conf}"
 
 die() { echo "slot-identity.sh: $*" >&2; exit 1; }
 
@@ -108,7 +108,7 @@ main() {
     echo "TRYBOOT=$tryboot"
 
     if [ ! -r "$SLOTMAP" ]; then
-        # Not an error. A pre-4d KosmOS install is a single-root image with no
+        # Not an error. A pre-4d MolniyaOS install is a single-root image with no
         # slots at all, and saying "mismatch" about a box that has none would
         # be a false alarm in the direction that reverts good updates.
         echo "SLOT=unknown"
@@ -117,10 +117,10 @@ main() {
     fi
 
     local a_boot a_root b_boot b_root
-    a_boot=$(slotmap_get KOSMOS_SLOT_A_BOOT) || die "$SLOTMAP: bad KOSMOS_SLOT_A_BOOT"
-    a_root=$(slotmap_get KOSMOS_SLOT_A_ROOT) || die "$SLOTMAP: bad KOSMOS_SLOT_A_ROOT"
-    b_boot=$(slotmap_get KOSMOS_SLOT_B_BOOT) || die "$SLOTMAP: bad KOSMOS_SLOT_B_BOOT"
-    b_root=$(slotmap_get KOSMOS_SLOT_B_ROOT) || die "$SLOTMAP: bad KOSMOS_SLOT_B_ROOT"
+    a_boot=$(slotmap_get MOLNIYA_SLOT_A_BOOT) || die "$SLOTMAP: bad MOLNIYA_SLOT_A_BOOT"
+    a_root=$(slotmap_get MOLNIYA_SLOT_A_ROOT) || die "$SLOTMAP: bad MOLNIYA_SLOT_A_ROOT"
+    b_boot=$(slotmap_get MOLNIYA_SLOT_B_BOOT) || die "$SLOTMAP: bad MOLNIYA_SLOT_B_BOOT"
+    b_root=$(slotmap_get MOLNIYA_SLOT_B_ROOT) || die "$SLOTMAP: bad MOLNIYA_SLOT_B_ROOT"
 
     # Name the slot from the partition the FIRMWARE chose, not from the root.
     # The firmware's choice is the one autoboot.txt made and the one a rollback

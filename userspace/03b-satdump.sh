@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================================
-# KosmOS 03b — SatDump
+# MolniyaOS 03b — SatDump
 # ============================================================================
 # Run this ON THE PI. Builds SatDump from source at a pinned release.
 #
@@ -33,7 +33,7 @@ SATDUMP_TAG="1.2.2"
 SATDUMP_SHA="7aef0fe8441bc3eb440b1b6ba053556da5e40991"
 
 SRC_ROOT="/tmp"
-MANIFEST="/usr/local/share/kosmos/build-manifest.txt"
+MANIFEST="/usr/local/share/molniya/build-manifest.txt"
 
 # Install prefix. Upstream documents -DCMAKE_INSTALL_PREFIX=/usr; this uses
 # /usr/local instead, which is where locally built software belongs and keeps
@@ -128,15 +128,15 @@ echo "  Pinned at $SATDUMP_TAG (${SATDUMP_SHA:0:12})"
 echo "  Prefix:   $INSTALL_PREFIX"
 echo "  This is a long build. Run it under tmux or screen."
 echo ""
-# KOSMOS_ASSUME_YES exists for the image builder, which runs this in a chroot
+# MOLNIYA_ASSUME_YES exists for the image builder, which runs this in a chroot
 # with no tty. Without it `read` gets EOF, INSTALL_SATDUMP stays empty, the case below
 # falls to its default and the script exits 3 -- which the sequencer treats as a
 # deliberate decline and reports as SKIPPED, so the build completes "successfully"
 # having installed nothing. Explicit opt-in, and no default: an unset variable
 # still prompts, so running this by hand is unchanged.
-if [ "${KOSMOS_ASSUME_YES:-0}" = "1" ]; then
+if [ "${MOLNIYA_ASSUME_YES:-0}" = "1" ]; then
     INSTALL_SATDUMP=y
-    echo "  KOSMOS_ASSUME_YES=1 — proceeding without prompting."
+    echo "  MOLNIYA_ASSUME_YES=1 — proceeding without prompting."
 else
     read -r -p "Build and install SatDump? (y/N): " INSTALL_SATDUMP
 fi

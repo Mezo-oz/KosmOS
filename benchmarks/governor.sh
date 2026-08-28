@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================================
-# KosmOS — read or set the CPU scaling governor on every core
+# MolniyaOS — read or set the CPU scaling governor on every core
 # ============================================================================
 #   governor.sh read          prints cpu0's governor on stdout
 #   governor.sh set <name>    sets it on every core, then verifies

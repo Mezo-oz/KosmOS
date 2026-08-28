@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================================
-# KosmOS — fetch and verify the base OS image (Phase 4a, stage 1)
+# MolniyaOS — fetch and verify the base OS image (Phase 4a, stage 1)
 # ============================================================================
 # Downloads one pinned Raspberry Pi OS Lite image, verifies it, decompresses
 # it, and prints the path of the verified .img on stdout. Everything else in
@@ -10,7 +10,7 @@
 #   ./fetch-base.sh              # fetch, verify, decompress; print the .img path
 #   ./fetch-base.sh --print-pin  # print what is pinned, download nothing
 #
-# Cache directory is $KOSMOS_BUILD_CACHE, default /var/tmp/kosmos-build.
+# Cache directory is $MOLNIYA_BUILD_CACHE, default /var/tmp/molniya-build.
 # NOT /tmp: on Raspberry Pi OS that is a 2 GB tmpfs, and this writes ~3 GB.
 # Failing that way costs a 500 MB download to discover.
 #
@@ -58,7 +58,7 @@ readonly BASE_SHA256="acff736ca7945e3b305f07cda4abdb870910e12634991da69783611756
 #                                    flag gets set at all.
 readonly REQUIRED_PACKAGES="raspberrypi-sys-mods raspi-utils"
 
-CACHE="${KOSMOS_BUILD_CACHE:-/var/tmp/kosmos-build}"
+CACHE="${MOLNIYA_BUILD_CACHE:-/var/tmp/molniya-build}"
 
 die() { echo "fetch-base.sh: $*" >&2; exit 1; }
 note() { echo "  $*" >&2; }

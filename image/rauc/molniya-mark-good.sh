@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================================
-# KosmOS — mark the running slot good, but only if it deserves it (Phase 4d)
+# MolniyaOS — mark the running slot good, but only if it deserves it (Phase 4d)
 # ============================================================================
 # This is the script that decides whether an update sticks. It runs the health
 # check and calls `rauc status mark-good` ONLY on exit 0. Never marking good is
@@ -36,10 +36,10 @@
 
 set -euo pipefail
 
-HEALTH_CHECK="${KOSMOS_HEALTH_CHECK:-/usr/local/lib/kosmos/kosmos-health-check.sh}"
-RAUC="${KOSMOS_RAUC:-rauc}"
+HEALTH_CHECK="${MOLNIYA_HEALTH_CHECK:-/usr/local/lib/molniya/molniya-health-check.sh}"
+RAUC="${MOLNIYA_RAUC:-rauc}"
 
-log()  { echo "kosmos-mark-good: $*" >&2; }
+log()  { echo "molniya-mark-good: $*" >&2; }
 die2() { log "$*"; exit 2; }
 
 main() {

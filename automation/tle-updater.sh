@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================================
-# KosmOS — TLE updater
+# MolniyaOS — TLE updater
 # ============================================================================
 # Refreshes orbital elements from CelesTrak. Run it before any session, and on a
 # timer for an unattended box.
@@ -42,7 +42,7 @@
 # elements that are published daily:
 #
 #   crontab -e
-#   17 5,17 * * *  /home/pi/KosmOS/automation/tle-updater.sh >> /var/log/kosmos-tle.log 2>&1
+#   17 5,17 * * *  /home/pi/MolniyaOS/automation/tle-updater.sh >> /var/log/molniya-tle.log 2>&1
 #
 # Exits non-zero if any source failed to fetch or failed validation, so a cron
 # job or systemd timer reports it rather than leaving stale elements in place.
@@ -252,7 +252,7 @@ trap 'rm -rf "$STAGING"' EXIT
 FAILURES=0
 
 echo "============================================"
-echo "  KosmOS TLE Update"
+echo "  MolniyaOS TLE Update"
 echo "============================================"
 echo ""
 if [ "$DRY_RUN" -eq 1 ]; then

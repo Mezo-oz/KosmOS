@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================================
-# KosmOS — which benchmark configuration is this boot?
+# MolniyaOS — which benchmark configuration is this boot?
 # ============================================================================
 # Prints one of A, B or C on stdout. Exit 0 when detected, 1 when it had to
 # guess. Executable helper, not a sourced library — see the extraction rule in
 # ROADMAP.md.
 #
 #   A  stock Pi kernel
-#   B  KosmOS PREEMPT_RT, no core isolation
-#   C  KosmOS PREEMPT_RT + nohz_full
+#   B  MolniyaOS PREEMPT_RT, no core isolation
+#   C  MolniyaOS PREEMPT_RT + nohz_full
 #
 # Detected rather than typed in because a mislabelled result set is worse than
 # no result set: it looks like data.

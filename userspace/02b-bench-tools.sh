@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================================
-# KosmOS Post-Install 02b — RT Benchmark Tooling
+# MolniyaOS Post-Install 02b — RT Benchmark Tooling
 # ============================================================================
 # Run this ON THE PI. Installs the two packages the kernel latency benchmark
 # needs, behind a prompt, and prints nothing else.

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================================
-# KosmOS Post-Install 02a — Kernel Verification
+# MolniyaOS Post-Install 02a — Kernel Verification
 # ============================================================================
 # Run this ON THE PI after rebooting into the custom kernel.
 #
@@ -27,7 +27,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 echo "============================================"
-echo "  KosmOS Post-Install Verification"
+echo "  MolniyaOS Post-Install Verification"
 echo "============================================"
 echo ""
 
@@ -37,11 +37,11 @@ FAIL=0
 # --- Kernel Version ---
 KVER=$(uname -r)
 echo -n "Kernel version:       $KVER "
-# Match "kosmos" only. The old pattern also accepted "rt" or "6.12", which a
+# Match "molniya" only. The old pattern also accepted "rt" or "6.12", which a
 # stock Raspberry Pi OS 6.12 kernel satisfies -- so this check reported [OK]
 # whether or not the custom kernel was actually running. CONFIG_LOCALVERSION
-# in sdr-rt.config is what puts "kosmos" in the version string.
-if echo "$KVER" | grep -qi "kosmos"; then
+# in sdr-rt.config is what puts "molniya" in the version string.
+if echo "$KVER" | grep -qi "molniya"; then
     echo -e "${GREEN}[OK]${NC}"
     # BUG FIX: ((PASS++)) exits with code 1 when PASS=0 under set -e,
     # because bash treats ((0)) as a failure. Using arithmetic assignment

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================================
-# KosmOS — install the RAUC keyring into an image that shipped without one
+# MolniyaOS — install the RAUC keyring into an image that shipped without one
 # ============================================================================
 #   ./inject-keyring.sh --expect <sha256> [image.img]
 #   ./inject-keyring.sh --expect <sha256> --cert <ca.cert.pem> [image.img]
@@ -48,8 +48,8 @@ set -euo pipefail
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LAYOUT="$SELF_DIR/layout.sh"
-CACHE="${KOSMOS_BUILD_CACHE:-/var/tmp/kosmos-build}"
-RAUC_CERT="${KOSMOS_RAUC_CERT:-}"
+CACHE="${MOLNIYA_BUILD_CACHE:-/var/tmp/molniya-build}"
+RAUC_CERT="${MOLNIYA_RAUC_CERT:-}"
 
 MNT="$CACHE/mnt-inject"
 MOUNTED=()
@@ -120,7 +120,7 @@ usage() {
 usage: inject-keyring.sh --expect <sha256> [--cert <ca.cert.pem>] [image.img]
 
   --expect <sha256>   digest the image MUST have before anything is touched
-  --cert <path>       CA certificate to install (or set KOSMOS_RAUC_CERT)
+  --cert <path>       CA certificate to install (or set MOLNIYA_RAUC_CERT)
 
 Prints the new sha256 on stdout. Rewrites <image>.sha256 and appends the
 before/after pair to <image>.manifest. Run verify-image.sh --release after.
@@ -140,13 +140,13 @@ main() {
                       img="$1"; shift ;;
         esac
     done
-    img="${img:-$CACHE/kosmos-rpi5.img}"
+    img="${img:-$CACHE/molniya-rpi5.img}"
 
     [ -n "$EXPECT" ] || die "--expect <sha256> is required.
   It is what makes this auditable: state which artifact is being modified, and
   a mismatch stops before anything is mounted. Read it from <image>.sha256."
     [ -f "$img" ] || die "$img: no such image"
-    [ -n "$RAUC_CERT" ] || die "no certificate: pass --cert or set KOSMOS_RAUC_CERT"
+    [ -n "$RAUC_CERT" ] || die "no certificate: pass --cert or set MOLNIYA_RAUC_CERT"
     [ -f "$RAUC_CERT" ] || die "$RAUC_CERT: not a file"
     openssl x509 -in "$RAUC_CERT" -noout > /dev/null 2>&1 ||
         die "$RAUC_CERT: openssl does not parse this as a certificate"
@@ -173,8 +173,8 @@ main() {
     note "$LOOPDEV"
 
     step "inject — the keyring, into both slots"
-    inject_slot "$(slotmap_get KOSMOS_SLOT_A_ROOT)" A
-    inject_slot "$(slotmap_get KOSMOS_SLOT_B_ROOT)" B
+    inject_slot "$(slotmap_get MOLNIYA_SLOT_A_ROOT)" A
+    inject_slot "$(slotmap_get MOLNIYA_SLOT_B_ROOT)" B
 
     # Unmount before hashing. A dirty page cache means the digest describes
     # something the file does not yet contain, which is the one number here

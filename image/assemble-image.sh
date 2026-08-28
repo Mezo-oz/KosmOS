@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ============================================================================
-# KosmOS — assemble the A/B image (Phase 4a, stage 3)
+# MolniyaOS — assemble the A/B image (Phase 4a, stage 3)
 # ============================================================================
 # Takes stage 2's rootfs and bootfs and writes them into a partitioned image
 # built from image/layout.sh. Prints the image path on stdout.
@@ -33,7 +33,7 @@ set -euo pipefail
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LAYOUT="$SELF_DIR/layout.sh"
-CACHE="${KOSMOS_BUILD_CACHE:-/var/tmp/kosmos-build}"
+CACHE="${MOLNIYA_BUILD_CACHE:-/var/tmp/molniya-build}"
 
 ROOTFS="$CACHE/rootfs"
 BOOTFS="$CACHE/bootfs"
@@ -47,12 +47,12 @@ MANIFEST="$CACHE/rootfs.manifest"
 # same partition is nvme0n1p5. PARTUUID would survive that. Changing it means
 # changing layout.sh, which owns the decision -- recorded here because this is
 # where someone will first notice.
-TARGET_DEV="${KOSMOS_TARGET_DEV:-/dev/mmcblk0}"
+TARGET_DEV="${MOLNIYA_TARGET_DEV:-/dev/mmcblk0}"
 
 # First-boot login. Empty means the image ships unloginable, which is the base
 # image's own behaviour and is announced loudly rather than silently shipped.
 AUTHORIZED_KEYS=""
-LOGIN_USER="${KOSMOS_LOGIN_USER:-kosmos}"
+LOGIN_USER="${MOLNIYA_LOGIN_USER:-molniya}"
 
 MOUNTED=()
 LOOPDEV=""
@@ -159,7 +159,7 @@ make_filesystems() {
     sudo mkfs.vfat -F 32 -n BOOT_B     "${LOOPDEV}p3" > /dev/null
     sudo mkfs.ext4 -q -F -L ROOT_A     "${LOOPDEV}p5"
     sudo mkfs.ext4 -q -F -L ROOT_B     "${LOOPDEV}p6"
-    sudo mkfs.ext4 -q -F -L KOSMOSDATA "${LOOPDEV}p7"
+    sudo mkfs.ext4 -q -F -L MOLNIYADATA "${LOOPDEV}p7"
 }
 
 # p1 holds autoboot.txt and nothing else. Slot A is the default for a fresh
@@ -174,17 +174,17 @@ write_selector() {
 # Point config.txt at our kernel, and take the stock one out of the slot.
 #
 # THIS IS THE STEP THAT DECIDES WHICH KERNEL RUNS, and without it the image is
-# a convincing fake. The package ships kernel-kosmos.img; the base bootfs ships
+# a convincing fake. The package ships kernel-molniya.img; the base bootfs ships
 # kernel_2712.img and kernel8.img; and the stock config.txt carries no `kernel=`
 # line at all, so the firmware auto-selects kernel_2712.img on a Pi 5. Overlay
-# the two and you get an image that boots the STOCK kernel with KosmOS modules
+# the two and you get an image that boots the STOCK kernel with MolniyaOS modules
 # sitting unused beside it -- no PREEMPT_RT, no latency guarantee, and nothing
 # on the box saying so. Caught before the first assembly rather than after.
 #
 # The stock kernels are then removed rather than left as a fallback. Inside 4d
 # the other slot IS the fallback, so a second kernel in this slot buys nothing
 # and leaves an ambiguity that only bites when `kernel=` goes missing. The
-# health check asserts the running kernel carries -kosmos, which is the backstop
+# health check asserts the running kernel carries -molniya, which is the backstop
 # if this is ever got wrong again.
 arm_kernel() {
     local bootdir="$1" kernel_boot="$2" kimg
@@ -203,7 +203,7 @@ arm_kernel() {
 }
 
 # One slot's bootfs: the base boot files, this slot's cmdline.txt, and the
-# KosmOS kernel if one was given.
+# MolniyaOS kernel if one was given.
 populate_bootfs() {
     local slot="$1" part="$2" kernel_boot="$3"
     step "populating bootfs $slot (p$part)"
@@ -228,8 +228,8 @@ populate_root() {
 
     layout fstab "$slot" "$TARGET_DEV" | sudo tee "$MNT/root$slot/etc/fstab" > /dev/null
 
-    sudo mkdir -p "$MNT/root$slot/etc/kosmos" "$MNT/root$slot/data"
-    layout slotmap | sudo tee "$MNT/root$slot/etc/kosmos/slots.conf" > /dev/null
+    sudo mkdir -p "$MNT/root$slot/etc/molniya" "$MNT/root$slot/data"
+    layout slotmap | sudo tee "$MNT/root$slot/etc/molniya/slots.conf" > /dev/null
 
     # The health check and its helper ship inside the image; without them the
     # slot cannot report itself healthy and no update could ever be committed.
@@ -237,10 +237,10 @@ populate_root() {
         provision_access "$MNT/root$slot" "$LOGIN_USER" "$AUTHORIZED_KEYS"
     fi
 
-    sudo mkdir -p "$MNT/root$slot/usr/local/lib/kosmos"
-    sudo install -m 0755 "$SELF_DIR/health-check/kosmos-health-check.sh" \
+    sudo mkdir -p "$MNT/root$slot/usr/local/lib/molniya"
+    sudo install -m 0755 "$SELF_DIR/health-check/molniya-health-check.sh" \
         "$SELF_DIR/health-check/slot-identity.sh" \
-        "$MNT/root$slot/usr/local/lib/kosmos/"
+        "$MNT/root$slot/usr/local/lib/molniya/"
 
     # The A/B update machinery, extracted at 393/400. See rauc/provision-rauc.sh.
     "$SELF_DIR/rauc/provision-rauc.sh" "$MNT/root$slot" "$slot" "$TARGET_DEV"
@@ -285,8 +285,8 @@ provision_access() {
         "$root/home/$user/.ssh/authorized_keys"
 
     printf '%s ALL=(ALL) NOPASSWD: ALL\n' "$user" |
-        sudo tee "$root/etc/sudoers.d/010-kosmos-nopasswd" > /dev/null
-    sudo chmod 0440 "$root/etc/sudoers.d/010-kosmos-nopasswd"
+        sudo tee "$root/etc/sudoers.d/010-molniya-nopasswd" > /dev/null
+    sudo chmod 0440 "$root/etc/sudoers.d/010-molniya-nopasswd"
 
     # The account is provisioned, so the first-boot renamer has nothing to do
     # and would only sit waiting on a console for a userconf.txt that is not
@@ -304,7 +304,7 @@ provision_access() {
     # make password auth fail in practice.
     sudo mkdir -p "$root/etc/ssh/sshd_config.d"
     printf 'PasswordAuthentication no\nPermitRootLogin no\n' |
-        sudo tee "$root/etc/ssh/sshd_config.d/10-kosmos.conf" > /dev/null
+        sudo tee "$root/etc/ssh/sshd_config.d/10-molniya.conf" > /dev/null
 }
 
 # The data partition is shared by both slots and survives every update. Seeded
@@ -343,7 +343,7 @@ extract_kernel_boot() {
         [ "$staged" = "$kver" ] ||
             die "kernel mismatch: rootfs has modules for $staged, this package is $kver"
     else
-        note "WARNING: rootfs has no KosmOS modules; this kernel will have none"
+        note "WARNING: rootfs has no MolniyaOS modules; this kernel will have none"
     fi
 
     [ -d "$pkg/boot" ] || die "$tarball has no boot/ directory"
@@ -373,7 +373,7 @@ main() {
     local kernel_boot=""
     [ -z "$kernel_tarball" ] || kernel_boot=$(extract_kernel_boot "$kernel_tarball")
 
-    local img="${out:-$CACHE/kosmos-rpi5.img}"
+    local img="${out:-$CACHE/molniya-rpi5.img}"
     create_image "$img"
     make_filesystems
     write_selector
@@ -388,7 +388,7 @@ main() {
 
     [ ! -f "$MANIFEST" ] || sudo cp "$MANIFEST" "${img}.manifest"
     step "image ready: $img"
-    [ -n "$kernel_boot" ] || note "WARNING: no kernel placed — this image will not boot KosmOS"
+    [ -n "$kernel_boot" ] || note "WARNING: no kernel placed — this image will not boot MolniyaOS"
     if [ -n "$AUTHORIZED_KEYS" ]; then
         note "login: $LOGIN_USER, key-only, sshd enabled"
     else

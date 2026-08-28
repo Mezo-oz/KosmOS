@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # Frequency Reference
 
-A working cheatsheet for the signals KosmOS is built to receive, plus the ones
+A working cheatsheet for the signals MolniyaOS is built to receive, plus the ones
 worth knowing about while you are already listening.
 
 **Before you trust a number here, check it.** Satellite downlinks get retuned,
@@ -120,7 +120,7 @@ these are safety-of-life services.
 | Signal | Frequency | Tool |
 |---|---|---|
 | ADS-B (1090ES) | 1090 MHz | `dump1090` |
-| UAT (US, general aviation) | 978 MHz | `dump978` — not installed by KosmOS |
+| UAT (US, general aviation) | 978 MHz | `dump978` — not installed by MolniyaOS |
 | Airband voice (AM) | 118 – 137 MHz | `rtl_fm -M am` |
 | ACARS | 131.550 MHz and regional variants ⚠️ | `acarsdec` — not installed |
 | AIS channel 1 | 161.975 MHz | `gr-ais`, `rtl-ais` |
@@ -222,5 +222,5 @@ allowed. Transmitting on the amateur bands needs a licence; transmitting on the
 satellite, aeronautical, maritime or SATCOM allocations above is illegal for you
 under every circumstance this project will ever produce.
 
-KosmOS installs no transmit capability, and none of the tools here can transmit
+MolniyaOS installs no transmit capability, and none of the tools here can transmit
 with an RTL-SDR — it is a receiver. Check your own jurisdiction before decoding.

@@ -1,5 +1,5 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
-# KosmOS RT Kernel Benchmark
+# MolniyaOS RT Kernel Benchmark
 
 **Status: Test 1 complete, Test 2 not started.** All three configurations —
 stock, `PREEMPT_RT`, `PREEMPT_RT` + dynticks — have been measured for scheduling
@@ -17,7 +17,7 @@ every `cpu`-load row throttled, and `A / idle / whole` has not been re-verified.
 
 ## The claim under test
 
-KosmOS builds a `PREEMPT_RT` kernel and asserts that it reduces dropped SDR
+MolniyaOS builds a `PREEMPT_RT` kernel and asserts that it reduces dropped SDR
 samples. Until it is measured against the stock Raspberry Pi kernel on the same
 hardware, that is a claim about a config option, not a result.
 
@@ -35,7 +35,7 @@ dropping the subject.
 
 ## Why this is an A/B and not a demo
 
-The `os_prefix=` install (`kernel/install-kernel.sh`) puts the KosmOS kernel, its
+The `os_prefix=` install (`kernel/install-kernel.sh`) puts the MolniyaOS kernel, its
 device trees, its overlays and its command line in their own boot-partition
 directory. Every stock boot file stays byte-identical. Switching kernels is
 commenting two lines in `config.txt`.
@@ -48,16 +48,16 @@ config-B boot, nothing differs except the kernel.
 | Config | Kernel | `NOHZ_FULL_CPUS` | What it isolates |
 |---|---|---|---|
 | **A** | stock Pi kernel | n/a | baseline |
-| **B** | KosmOS (`PREEMPT_RT`) | `""` | RT with no core isolation |
-| **C** | KosmOS (`PREEMPT_RT`) | `"1-3"` | RT plus full dynticks |
+| **B** | MolniyaOS (`PREEMPT_RT`) | `""` | RT with no core isolation |
+| **C** | MolniyaOS (`PREEMPT_RT`) | `"1-3"` | RT plus full dynticks |
 
 **Report `B − A` as the `PREEMPT_RT` result. Report `C − B` as the core-isolation
 result. Never report `C − A`** — it conflates two independent changes and credits
 the total to whichever one is being argued for.
 
-Switching A ↔ B/C: comment or uncomment the two directives in the KosmOS block of
+Switching A ↔ B/C: comment or uncomment the two directives in the MolniyaOS block of
 `/boot/firmware/config.txt`. Switching B ↔ C: change `NOHZ_FULL_CPUS` in
-`kernel/install-kernel.sh` and re-run it, or edit `kosmos/cmdline.txt` on the boot
+`kernel/install-kernel.sh` and re-run it, or edit `molniya/cmdline.txt` on the boot
 partition directly.
 
 ### Bench box
@@ -83,9 +83,9 @@ package as `kernel-commit`, and — when the build was not pinned — prints the
 set that pin and record the same SHA here.** Both, not one: the script makes it
 reproducible, this table makes it citable.
 
-| | Config A (stock) | Configs B and C (KosmOS) |
+| | Config A (stock) | Configs B and C (MolniyaOS) |
 |---|---|---|
-| `uname -r` | `6.12.62+rpt-rpi-2712` | `6.12.98-kosmos+` |
+| `uname -r` | `6.12.62+rpt-rpi-2712` | `6.12.98-molniya+` |
 | `uname -v` | `#1 SMP PREEMPT Debian 1:6.12.62-1+rpt1` | `#1 SMP PREEMPT_RT Fri Jul 31 02:36:12 BST 2026` |
 | Source | Pi OS archive | `raspberrypi/linux`, branch `rpi-6.12.y` |
 | Commit | n/a — distribution package | **`f5a99b95354d38db209003a7d00560e5091ba94a`** |
@@ -115,7 +115,7 @@ On the Pi, the commit that was installed can be read back from the extracted
 package:
 
 ```bash
-cat ~/kosmos-kernel/kernel-commit
+cat ~/molniya-kernel/kernel-commit
 ```
 
 ---
@@ -158,7 +158,7 @@ governor was pinned to remove. Left unmeasured it re-enters through the back
 door, differs between configurations measured at different times, and lands in
 the kernel's column.
 
-**KosmOS targets off-the-shelf hardware, so "fit a better cooler" is not an
+**MolniyaOS targets off-the-shelf hardware, so "fit a better cooler" is not an
 available answer.** The method has to be valid inside stock thermal limits:
 
 | Control | What it does |
@@ -208,7 +208,7 @@ battery in a sealed weatherproof enclosure, possibly in direct sun — **thermal
 worse than anything measured here.** So a throttled row is not a spoiled reading of
 the product; it may be the closest thing in this data set to how the appliance
 actually runs. Reporting the clean rows alone would overstate what a deployed
-KosmOS box delivers.
+MolniyaOS box delivers.
 
 If enough throttled rows accumulate to support it, `B_hot − B_cool` becomes a
 second reportable delta and the honest headline changes shape — from "PREEMPT_RT
@@ -486,13 +486,13 @@ result.
 
 ---
 
-## Instrumentation upgrade — the `gr-kosmos` discontinuity probe
+## Instrumentation upgrade — the `gr-molniya` discontinuity probe
 
 Tests 2 and 3 measure different things badly: `rtl_test` streams to nowhere, and
 a decoded image is a subjective read. The gap between them is a capture that is
 *real* and *measured*.
 
-`gr-kosmos/` holds an inline GNU Radio block that watches the sample stream and
+`gr-molniya/` holds an inline GNU Radio block that watches the sample stream and
 logs every discontinuity with a timestamp — the gauge in the pipe. Once it runs
 on hardware, every real capture becomes a benchmark run, and Test 2 stops being
 synthetic.
@@ -504,7 +504,7 @@ Status: **implemented 2026-08-05, half of it verified.** The clock arithmetic
 that does the measuring is split into `gap_math.py`, needs nothing but the
 standard library, and passes 15 unit tests on any machine. The GNU Radio shell
 around it — tag unpacking, pass-through, log write — has still never run under
-GNU Radio, and will not until the Pi builds the stack. See `gr-kosmos/README.md`.
+GNU Radio, and will not until the Pi builds the stack. See `gr-molniya/README.md`.
 
 ---
 
