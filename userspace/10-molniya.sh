@@ -31,21 +31,18 @@ set -euo pipefail
 readonly MOLNIYA_LIB="/usr/local/lib/molniya"
 readonly DIGEST_FILE="/etc/molniya/image-digest"
 
-# Sky geometry: 4 rows of stars spanning the wordmark's width, with the
-# nebula fixed at center and its lightning bolt below — Молния means
-# lightning; the sky says so.
+# Sky geometry: 4 rows of stars spanning the wordmark's width — nothing
+# else. The constellation IS the image fingerprint.
 readonly SKY_ROWS=4
-readonly SKY_COLS=70
+readonly SKY_COLS=68
 readonly STAR_COUNT=16   # 16 stars × 2 digest bytes = all 32 bytes
 
 # --- color -------------------------------------------------------------------
 
-C_SAT=""; C_NEB=""; C_BOLT=""; C_WORD=""; C_TAG=""; C_LABEL=""; C_VALUE=""; C_RESET=""
+C_SAT=""; C_WORD=""; C_TAG=""; C_LABEL=""; C_VALUE=""; C_RESET=""
 
 enable_color() {
   C_SAT=$'\033[2;37m'      # dim white   — stars
-  C_NEB=$'\033[2;35m'      # dim magenta — nebula
-  C_BOLT=$'\033[1;33m'     # bold yellow — the lightning bolt
   C_WORD=$'\033[1;33m'     # bold yellow — small-banner wordmark
   C_TAG=$'\033[2m'         # dim         — tagline
   C_LABEL=$'\033[2m'       # dim         — status labels
@@ -87,12 +84,11 @@ sky_seed() {
 
 # --- art ---------------------------------------------------------------------
 
-print_sky_and_nebula() {
-  # Star constellation (digest-derived, spanning the full width) + a fixed
-  # nebula at center with a lightning bolt discharging below it.
+print_sky() {
+  # The star constellation, digest-derived, spanning the wordmark's width.
   local seed="$1"
   local -A field=()
-  local i b1 b2 row col pick glyph line neb neb_at
+  local i b1 b2 row col pick glyph line
 
   for (( i = 0; i < STAR_COUNT; i++ )); do          # bounded: STAR_COUNT
     b1=$(( 16#${seed:i*4:2} ))
@@ -108,24 +104,11 @@ print_sky_and_nebula() {
     field["$row,$col"]="$glyph"                      # collisions overwrite
   done
 
-  local nebula=(
-    '  .·▒▓▓▒·.  '
-    ' ·▒▓████▓▒· '
-    '  ˙·▒▓▓▒·˙  '
-    '      ↯     '
-  )
-  neb_at=$(( (SKY_COLS - 12) / 2 ))                  # nebula rows are 12 wide
-
   for (( row = 0; row < SKY_ROWS; row++ )); do       # bounded: SKY_ROWS
     line=""
     for (( col = 0; col < SKY_COLS; col++ )); do     # bounded: SKY_COLS
       line+="${field["$row,$col"]:- }"
     done
-    # splice the nebula over the center; its glow occludes stars behind it
-    neb="${nebula[$row]}"
-    line="${line:0:neb_at}${C_NEB}${neb}${C_SAT}${line:neb_at+${#neb}}"
-    # the bolt flashes yellow
-    line="${line/↯/${C_BOLT}↯${C_NEB}}"
     printf '%s%s%s\n' "$C_SAT" "$line" "$C_RESET"
   done
 }
@@ -134,12 +117,12 @@ print_wordmark() {
   # МОЛНИЯ — hand-built in the ANSI-shadow style (no figlet font carries
   # Cyrillic in this face). Rendered white→yellow, top to bottom.
   local -a rows=(
-    '███╗   ███╗   ██████╗      ██████╗  ██╗  ██╗  ██╗     ████╗   ███████╗'
-    '████╗ ████║  ██╔═══██╗    ██╔══██║  ██║  ██║  ██║   ██╔╝██║  ██╔═══██║'
-    '██╔████╔██║  ██║   ██║   ██╔╝  ██║  ███████║  ██║ ██╔╝  ██║  ╚███████║'
-    '██║╚██╔╝██║  ██║   ██║  ██╔╝   ██║  ██╔══██║  ████╔╝    ██║    ██╗ ██║'
-    '██║ ╚═╝ ██║  ╚██████╔╝  ██║    ██║  ██║  ██║  ██╔╝      ██║  ██╔╝  ██║'
-    '╚═╝     ╚═╝   ╚═════╝   ╚═╝    ╚═╝  ╚═╝  ╚═╝  ╚═╝       ╚═╝  ╚═╝   ╚═╝'
+    '███╗   ███╗   ██████╗      ██████╗  ██╗  ██╗  ██╗   ████╗   ███████╗'
+    '████╗ ████║  ██╔═══██╗    ██╔══██║  ██║  ██║  ██║ ██╔╝██║  ██╔═══██║'
+    '██╔████╔██║  ██║   ██║   ██╔╝  ██║  ███████║  ██║██╔╝ ██║  ╚███████║'
+    '██║╚██╔╝██║  ██║   ██║  ██╔╝   ██║  ██╔══██║  ████╔╝  ██║    ██╗ ██║'
+    '██║ ╚═╝ ██║  ╚██████╔╝  ██║    ██║  ██║  ██║  ██╔╝    ██║  ██╔╝  ██║'
+    '╚═╝     ╚═╝   ╚═════╝   ╚═╝    ╚═╝  ╚═╝  ╚═╝  ╚═╝     ╚═╝  ╚═╝   ╚═╝'
   )
   local i
   for i in "${!rows[@]}"; do                         # bounded: 6 rows
@@ -151,7 +134,7 @@ print_wordmark() {
   done
   printf '%s' "$C_TAG"
   cat <<'EOF'
-           ── built from bare metal · aimed at the stars ──
+          ── built from bare metal · aimed at the stars ──
 EOF
   printf '%s' "$C_RESET"
 }
@@ -248,7 +231,7 @@ main() {
   if (( small )); then
     print_banner_small
   else
-    print_sky_and_nebula "$(sky_seed)"
+    print_sky "$(sky_seed)"
     print_wordmark
   fi
   printf '\n'
