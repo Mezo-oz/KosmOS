@@ -928,7 +928,7 @@ appliance. Phases 1–2 build the parts; Phase 3 makes them run themselves.*
 - [ ] **WiFi AP mode** — Pi broadcasts its own network
   - hostapd + dnsmasq configuration
   - Connect from MacBook in the field without existing infrastructure
-- [ ] **Web dashboard** — Browser-based control panel. **This is KosmOS's head,
+- [ ] **Web dashboard** — Browser-based control panel. **This is MolniyaOS's head,
   and the decision below is what makes it the only one.** *(Decided 2026-08-27.)*
 
   ##### There is no "headless build" and "GUI build" — there is one image
@@ -991,7 +991,7 @@ appliance. Phases 1–2 build the parts; Phase 3 makes them run themselves.*
   - **Read-mostly first.** A status page that cannot break anything is worth
     shipping before a control panel that can. Actions (start a capture, arm a
     pass) come after, one at a time, each with a reason.
-  - **No new runtime.** Python is already in the image for gr-kosmos, so a small
+  - **No new runtime.** Python is already in the image for gr-molniya, so a small
     Flask/FastAPI app plus static HTML/JS adds an app, not a stack. **No Node
     build chain** — an `npm` dependency tree is not affordable against 1 GB of
     doubled headroom, and it is exactly the kind of thing that grows without
@@ -2540,7 +2540,7 @@ v0.8   ⏳ ACTIVE  Image builder (reproducible, distributable .img.gz) —
                  spare card, not code.
                  ⚠️ That 127/127 is against the checks that existed when it was
                  built. The keyring gate added 08-27 fails it: the image ships
-                 no /etc/rauc/kosmos.cert.pem, so rauc refuses every bundle.
+                 no /etc/rauc/molniya.cert.pem, so rauc refuses every bundle.
                  inject-keyring.sh fixes the artifact; provision-rauc.sh fixes
                  every future build. See 4a PICK UP HERE.
 v0.9   ⏳ ACTIVE  Atomic A/B updates (RAUC + tryboot), health-check gate,
