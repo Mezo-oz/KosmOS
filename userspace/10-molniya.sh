@@ -31,23 +31,32 @@ set -euo pipefail
 readonly MOLNIYA_LIB="/usr/local/lib/molniya"
 readonly DIGEST_FILE="/etc/molniya/image-digest"
 
-# Sky geometry: 4 rows of stars, columns 0..38, Saturn fixed to the right.
+# Sky geometry: 4 rows of stars spanning the wordmark's width, with the
+# nebula fixed at center and its lightning bolt below — Молния means
+# lightning; the sky says so.
 readonly SKY_ROWS=4
-readonly SKY_COLS=39
-readonly STAR_COUNT=14   # 14 stars × 2 digest bytes = 28 of the 32 bytes
+readonly SKY_COLS=70
+readonly STAR_COUNT=16   # 16 stars × 2 digest bytes = all 32 bytes
 
 # --- color -------------------------------------------------------------------
 
-C_SAT=""; C_WORD=""; C_TAG=""; C_LABEL=""; C_VALUE=""; C_RESET=""
+C_SAT=""; C_NEB=""; C_BOLT=""; C_WORD=""; C_TAG=""; C_LABEL=""; C_VALUE=""; C_RESET=""
 
 enable_color() {
-  C_SAT=$'\033[2;36m'      # dim cyan  — stars + satellite
-  C_WORD=$'\033[1;36m'     # bold cyan — wordmark
-  C_TAG=$'\033[2m'         # dim       — tagline
-  C_LABEL=$'\033[2m'       # dim       — status labels
-  C_VALUE=$'\033[0m'       # normal    — status values
+  C_SAT=$'\033[2;37m'      # dim white   — stars
+  C_NEB=$'\033[2;35m'      # dim magenta — nebula
+  C_BOLT=$'\033[1;33m'     # bold yellow — the lightning bolt
+  C_WORD=$'\033[1;33m'     # bold yellow — small-banner wordmark
+  C_TAG=$'\033[2m'         # dim         — tagline
+  C_LABEL=$'\033[2m'       # dim         — status labels
+  C_VALUE=$'\033[0m'       # normal      — status values
   C_RESET=$'\033[0m'
 }
+
+# White→yellow ramp for the big wordmark, top row to bottom row
+# (xterm-256 231→226; consoles without 256-color support map these to
+# their nearest white/yellow, so the banner degrades, not breaks).
+readonly -a WORD_RAMP=(231 230 229 228 227 226)
 
 # --- image digest ------------------------------------------------------------
 
@@ -78,12 +87,12 @@ sky_seed() {
 
 # --- art ---------------------------------------------------------------------
 
-print_sky_and_planet() {
-  # Star constellation (left, digest-derived) + fixed Saturn, with Titan
-  # in transit across the disk (right).
+print_sky_and_nebula() {
+  # Star constellation (digest-derived, spanning the full width) + a fixed
+  # nebula at center with a lightning bolt discharging below it.
   local seed="$1"
   local -A field=()
-  local i b1 b2 row col pick glyph line
+  local i b1 b2 row col pick glyph line neb neb_at
 
   for (( i = 0; i < STAR_COUNT; i++ )); do          # bounded: STAR_COUNT
     b1=$(( 16#${seed:i*4:2} ))
@@ -99,36 +108,50 @@ print_sky_and_planet() {
     field["$row,$col"]="$glyph"                      # collisions overwrite
   done
 
-  local planet=(
-    '       .--.'
-    '   ──═( ●  )═──'
-    '       `--´'
-    ''
+  local nebula=(
+    '  .·▒▓▓▒·.  '
+    ' ·▒▓████▓▒· '
+    '  ˙·▒▓▓▒·˙  '
+    '      ↯     '
   )
+  neb_at=$(( (SKY_COLS - 12) / 2 ))                  # nebula rows are 12 wide
 
-  printf '%s' "$C_SAT"
   for (( row = 0; row < SKY_ROWS; row++ )); do       # bounded: SKY_ROWS
     line=""
     for (( col = 0; col < SKY_COLS; col++ )); do     # bounded: SKY_COLS
       line+="${field["$row,$col"]:- }"
     done
-    printf '%s%s\n' "$line" "${planet[$row]}"
+    # splice the nebula over the center; its glow occludes stars behind it
+    neb="${nebula[$row]}"
+    line="${line:0:neb_at}${C_NEB}${neb}${C_SAT}${line:neb_at+${#neb}}"
+    # the bolt flashes yellow
+    line="${line/↯/${C_BOLT}↯${C_NEB}}"
+    printf '%s%s%s\n' "$C_SAT" "$line" "$C_RESET"
   done
 }
 
 print_wordmark() {
-  printf '%s' "$C_WORD"
-  cat <<'EOF'
-███╗   ███╗ ██████╗ ██╗     ███╗   ██╗██╗██╗   ██╗ █████╗
-████╗ ████║██╔═══██╗██║     ████╗  ██║██║╚██╗ ██╔╝██╔══██╗
-██╔████╔██║██║   ██║██║     ██╔██╗ ██║██║ ╚████╔╝ ███████║
-██║╚██╔╝██║██║   ██║██║     ██║╚██╗██║██║  ╚██╔╝  ██╔══██║
-██║ ╚═╝ ██║╚██████╔╝███████╗██║ ╚████║██║   ██║   ██║  ██║
-╚═╝     ╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝╚═╝   ╚═╝   ╚═╝  ╚═╝
-EOF
+  # МОЛНИЯ — hand-built in the ANSI-shadow style (no figlet font carries
+  # Cyrillic in this face). Rendered white→yellow, top to bottom.
+  local -a rows=(
+    '███╗   ███╗   ██████╗      ██████╗  ██╗  ██╗  ██╗     ████╗   ███████╗'
+    '████╗ ████║  ██╔═══██╗    ██╔══██║  ██║  ██║  ██║   ██╔╝██║  ██╔═══██║'
+    '██╔████╔██║  ██║   ██║   ██╔╝  ██║  ███████║  ██║ ██╔╝  ██║  ╚███████║'
+    '██║╚██╔╝██║  ██║   ██║  ██╔╝   ██║  ██╔══██║  ████╔╝    ██║    ██╗ ██║'
+    '██║ ╚═╝ ██║  ╚██████╔╝  ██║    ██║  ██║  ██║  ██╔╝      ██║  ██╔╝  ██║'
+    '╚═╝     ╚═╝   ╚═════╝   ╚═╝    ╚═╝  ╚═╝  ╚═╝  ╚═╝       ╚═╝  ╚═╝   ╚═╝'
+  )
+  local i
+  for i in "${!rows[@]}"; do                         # bounded: 6 rows
+    if [[ -n "$C_RESET" ]]; then
+      printf '\033[1;38;5;%sm%s\033[0m\n' "${WORD_RAMP[i]}" "${rows[i]}"
+    else
+      printf '%s\n' "${rows[i]}"
+    fi
+  done
   printf '%s' "$C_TAG"
   cat <<'EOF'
-       ── built from bare metal · aimed at the stars ──
+           ── built from bare metal · aimed at the stars ──
 EOF
   printf '%s' "$C_RESET"
 }
@@ -225,7 +248,7 @@ main() {
   if (( small )); then
     print_banner_small
   else
-    print_sky_and_planet "$(sky_seed)"
+    print_sky_and_nebula "$(sky_seed)"
     print_wordmark
   fi
   printf '\n'
