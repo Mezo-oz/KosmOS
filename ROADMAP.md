@@ -292,31 +292,45 @@ detection returns the configuration letter on stdout:
 CONFIG=$(./bench-detect-config.sh)      # prints A, B or C; non-zero if unsure
 ```
 
-**Current headroom** (re-measured 2026-08-24, after stage 4):
-`build-rootfs.sh` **399**, `molniya-health-check.sh` **398**, `tle-updater.sh`
-**397**, `run-latency-bench.sh` **396**, `assemble-image.sh` **393**,
-`install-kernel.sh` 383, `layout.sh` 381, `rtl-power-heatmap.py` **377**,
-`run-sdr-bench.sh` 367, `02c-sdr-userspace.sh` 352, `verify-image.sh` 344,
-`01-build-kernel.sh` 329, `build-image.sh` 274, `install-tle-timer.sh` 249,
-`03a-gnuradio-stack.sh` 227, `thermal-state.sh` 207, `03b-satdump.sh` 206,
-`03c-sdrpp.sh` 203, `02a-verify-kernel.sh` 198, `fetch-base.sh` 172,
+**Current headroom** (re-measured 2026-08-27, after the rename and 4d's bundle
+work): `assemble-image.sh` **400**, `layout.sh` **399**,
+`molniya-health-check.sh` **398**, `tle-updater.sh` **397**,
+`run-latency-bench.sh` **396**, `build-rootfs.sh` **396**,
+`verify-image.sh` **395**, `molniya-boot-backend.sh` 386,
+`install-kernel.sh` 383, `rtl-power-heatmap.py` **377**, `run-sdr-bench.sh` 367,
+`02c-sdr-userspace.sh` 352, `01-build-kernel.sh` 329, `build-image.sh` 288,
+`build-bundle.sh` 266, `install-tle-timer.sh` 249, `10-molniya.sh` 242,
+`make-keys.sh` 238, `03a-gnuradio-stack.sh` 227, `inject-keyring.sh` 220,
+`thermal-state.sh` 207, `03b-satdump.sh` 206, `03c-sdrpp.sh` 203,
+`02a-verify-kernel.sh` 198, `verify-rauc.sh` 189, `fetch-base.sh` 172,
 `slot-identity.sh` 157.
 
-⚠️ **Five files now have under ten lines of room.** The two flagged on
-2026-08-23 have been joined by `assemble-image.sh`, which took **97 lines** for
-first-boot access provisioning and went 296 to 393 in one commit with nobody
-watching the number. That is the more useful of the two warnings: a file does
-not approach the cap gradually. It takes one feature and arrives.
+⚠️ **Seven files now have under ten lines of room, and `assemble-image.sh` is
+AT the cap at exactly 400.** The rename moved several counts by a line or two in
+each direction — the new name is two characters longer than the old one, and
+reflowed comments do not come out even.
 
-The rule is 400, so all five are compliant and none of them can take a feature.
-**The next addition to any of them must extract**, and unlike the last time this
-came up there is no duplicated prose left to reclaim — the honest fat is cut.
+⚠️ **The cap was breached, and CI caught it rather than anyone reading the
+number.** `verify-image.sh` sat at exactly 400 when 4d's keyring checks went in,
+taking it to **468**; `fb09439` and `c6e2216` were both red on origin/main until
+the split. The lesson is not "watch the number" — it is that the cheapest gate
+was the one nobody ran locally, while shellcheck, the CR check and a fixture run
+all were. Checking the expensive properties says nothing about the cheap ones.
 
-Both new files were written against this. `verify-image.sh` splits its per-slot
-checks into three functions (`verify_boot`, `verify_root`, `verify_access`)
-rather than one, which is what keeps every function inside the 60-line rule and
-leaves room to grow a section when 4b adds one; it has since taken `--release`
-and sits at 344.
+The split it forced is in `image/verify-rauc.sh` (189), and it is a good example
+of the rule producing a real boundary rather than an arbitrary one: the helper
+returns **data** — one `PASS`/`FAIL`/`NOTE` line per check — and the caller
+renders and tallies, so counting still happens in exactly one place.
+
+The rule is 400, so everything above is compliant and the top seven cannot take
+a feature. **The next addition to any of them must extract**, and there is no
+duplicated prose left to reclaim — the honest fat was cut long ago.
+
+`verify-image.sh` was written against this rule: it splits its per-slot checks
+into separate functions (`verify_boot`, `verify_root`, `verify_access`) rather
+than one, which keeps every function inside the 60-line rule and leaves room to
+grow a section when 4b adds one. It has since taken `--release`, the keyring
+gate and the `verify-rauc.sh` split, and sits at 395.
 
 ### ✅ The rule fired again, 2026-08-23 — and this time it was resisted first
 
