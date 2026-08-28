@@ -925,11 +925,93 @@ appliance. Phases 1–2 build the parts; Phase 3 makes them run themselves.*
 - [ ] **WiFi AP mode** — Pi broadcasts its own network
   - hostapd + dnsmasq configuration
   - Connect from MacBook in the field without existing infrastructure
-- [ ] **Web dashboard** — Browser-based control panel
-  - Status page showing: kernel info, SDR device status, active captures,
-    next satellite passes, system health
-  - Accessible from any device on the local network
-  - Could be a simple Flask/FastAPI app or static HTML + JS
+- [ ] **Web dashboard** — Browser-based control panel. **This is KosmOS's head,
+  and the decision below is what makes it the only one.** *(Decided 2026-08-27.)*
+
+  ##### There is no "headless build" and "GUI build" — there is one image
+
+  The question that produced this section was whether to ship a headless variant
+  and a desktop variant. **No**, and the first reason is that the premise is
+  wrong: **the GUI applications are already in the image.** `03b-satdump.sh`
+  builds SatDump's GUI (`libglfw3-dev`, `zenity`; its own comment notes the GUI
+  "costs build time but no runtime"), and SDR++ *is* a GUI application —
+  `03c-sdrpp.sh` says it "builds headless, needs a display to run" and can be
+  driven over X forwarding or VNC "the day the Pi gets a screen."
+
+  What is missing is a **display server and a session**, not a GUI. That is a
+  much smaller thing, and it is emphatically one to install rather than write:
+  a compositor and a widget toolkit are years of work with no SATCOM value.
+
+  **The second reason is size, and it is the binding one.** `layout.sh` gives
+  each root slot 6144 MiB against a rootfs of ~4.9 GB — roughly **1 GB of
+  headroom, doubled, because there are two slots.** A desktop session lands at
+  or over that line. Growing the slots means repartitioning, which this document
+  already calls the expensive thing to change, and which has been paid for once
+  (`60a602b`, "the root slot was too small").
+
+  **The third is that two variants is two of everything**: two build pipelines,
+  two verify baselines, two bundle streams, a doubled boot-test matrix — and a
+  second `compatible` string, or a bundle that installs the wrong variant over
+  the right one. All of it incurred while the *first* image has still never
+  booted.
+
+  So: **one image; the head is an optional module**, in the shape 3c already
+  uses for the Tor bridge and the *extension point, not scaffolding* rule
+  requires. A local desktop, if it is ever wanted, is that same module pattern
+  with `labwc` behind it — config, not construction — and it is not on the path.
+
+  ##### Why building this one is not reinventing anything
+
+  A dashboard is the one piece of UI here that cannot be taken off a shelf,
+  because everything worth showing is specific to this box: the next pass from
+  `predict`'s TLEs, the health check's verdict, **which slot is running and
+  whether it is a tryboot**, `rauc status`, dongle presence, thermal and
+  throttle state. Grafana can draw a time series; it cannot tell you that you
+  are one reboot from slot A.
+
+  It is also the appliance-correct head. Over the WiFi AP above, it is a screen
+  in a field from a phone, with no monitor, no keyboard and no display server on
+  the box — which is what *Positioning: Appliance, Not Toolbox* actually asks
+  for.
+
+  ##### ⚠️ Its state MUST live on the data partition (p7)
+
+  The single hard constraint, and the one that would be discovered late and
+  expensively. **Every A/B update replaces the root wholesale**, so a database
+  or config under `/var/lib` or `/etc` is destroyed by the next update —
+  silently, which is the dangerous part (4d). Anything the dashboard remembers
+  — captures index, preferences, logged series — belongs under `/data`, and the
+  binding of that boundary is 4b's business, not something to invent here.
+
+  ##### Shape, kept deliberately small
+
+  - **Read-mostly first.** A status page that cannot break anything is worth
+    shipping before a control panel that can. Actions (start a capture, arm a
+    pass) come after, one at a time, each with a reason.
+  - **No new runtime.** Python is already in the image for gr-kosmos, so a small
+    Flask/FastAPI app plus static HTML/JS adds an app, not a stack. **No Node
+    build chain** — an `npm` dependency tree is not affordable against 1 GB of
+    doubled headroom, and it is exactly the kind of thing that grows without
+    anyone deciding it should.
+  - **Bound to the AP/localhost by default, OFF by default.** It is a network
+    service on a box whose whole security story is that it does not offer any;
+    same tradeoff the Tor module is required to state, same answer.
+  - **It reads; it does not re-derive.** The health check already returns a
+    verdict, `slot-identity.sh` already returns the running slot, `rauc status`
+    already knows the slot map. The dashboard renders those. A dashboard that
+    computes its own opinion of health is a second implementation that will
+    disagree with the first at the worst moment — the same rule the boot
+    backend follows by not owning device-tree code.
+
+  ##### ⚠️ It collides with 3b, and one of them has to give
+
+  3b proposes **InfluxDB + Grafana**. That pairing is on the order of hundreds
+  of MB before any data, against ~1 GB of doubled headroom — so **3b and this
+  cannot both ship as written.** The likely resolution is that this dashboard
+  subsumes 3b's visualisation role over SQLite, and Grafana becomes something
+  you point at the box from a workstation rather than something the box carries.
+  Not decided here; flagged so it is decided once, rather than twice in
+  opposite directions.
 - [ ] **Tor bridge (optional module, OFF by default)** — `field/tor-bridge-setup.sh`
   - tor + obfs4/lyrebird pluggable transport — pure userspace, apt-installable,
     coexists fine with the RT kernel (no kernel work needed)
