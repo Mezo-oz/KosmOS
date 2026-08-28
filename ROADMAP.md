@@ -8,6 +8,93 @@ collision checks on 2026-08-28 found MolniyaOS clean on GitHub, DistroWatch, and
 general search. Artifact names stay lowercase by convention: kernel-molniya.img,
 `-molniya` localversion, gr-molniya. GitHub repo renamed (auto-redirects).*
 
+## The Rename: what is done, what is not (2026-08-28)
+
+The tree is renamed. Several things outside it are not, and they differ by a
+factor of a hundred in cost, so they are separated here rather than tracked as
+one checkbox.
+
+### ✅ Done — the whole work tree
+
+Code, docs, CI, unit tests, file and directory names. Verified rather than
+assumed: **`grep -ri kosmos` outside this file returns nothing at all.** Inside
+it there are fourteen hits and every one is deliberate — the history note at the
+top, and this section, which cannot describe what was renamed without naming it.
+That is the distinction worth holding: the old name survives only where it is
+the *subject*, never where it is a path, a config key, or an identifier. 39
+shell scripts shellcheck clean, `gap_math` 15/15, CI green at `071b12e`.
+
+Two strings in there mattered more than the rest:
+
+- **`RAUC_COMPATIBLE` is now `molniya-rpi5`.** RAUC refuses any bundle whose
+  `compatible` does not match the device's, so this string is a one-way door the
+  moment a box exists in the field: change it after deployment and that box
+  rejects every future update, reflash being the only cure. It was free to
+  change because nothing is deployed. **This was the deadline the rename was
+  actually racing**, and it has been met.
+- **`CONFIG_LOCALVERSION` is now `-molniya`** in `kernel/sdr-rt.config`, and
+  `01-build-kernel.sh` gates on it.
+
+### ✅ Done now — repo, worktree, artifact directory
+
+GitHub `Mezo-oz/KosmOS` → `Mezo-oz/MolniyaOS` (GitHub redirects the old URL, so
+existing clones keep working until they are re-pointed), the local worktree
+`X:\KosmOs` → `X:\MolniyaOS`, and `X:\kosmos-images` → `X:\molniya-images`.
+
+### ⏳ Not done — and the reason is cost, not oversight
+
+**The built kernel is still `6.12.98-kosmos+`.** The config says `-molniya`; the
+*binary* on pi-server, the 32 MB tarball and the 3.1 GB build tree all still say
+`kosmos`. Only a kernel rebuild changes that, and it invalidates the pinned
+identity that `BENCHMARKS.md` publishes against — so the rename does not get to
+trigger it on its own. Until the next rebuild the tree and the binary disagree,
+which is recorded here so nobody reads it as a bug.
+
+**pi-server's working paths.** `/var/tmp/kosmos-build`, `/var/tmp/kosmos-img`,
+`~/kosmos`, the stray `/var/tmp/kosmos-*.log`. Scratch, cheap to rename, and one
+of them is load-bearing: `/var/tmp/kosmos-build/rootfs` is the 4991 MiB SATCOM
+cache that a rebuild would otherwise spend two hours recreating. Rename by
+moving, never by deleting and rebuilding.
+
+**`/boot/firmware/kosmos` on the installed system** — the `os_prefix` directory
+the firmware reads. Renaming it means editing `config.txt` in the same breath,
+and getting it wrong makes pi-server unbootable. There is no reason to touch it
+before the next kernel install, which has to rewrite it anyway.
+
+### ⚠️ The existing artifact is now a KosmOS image, and the tree builds MolniyaOS
+
+The 3.49 GB `kosmos-rpi5.img.gz` was built on 2026-08-26, before any of this. Its
+`system.conf` carries `compatible=kosmos-rpi5`; its paths are `/etc/kosmos`,
+`/usr/local/lib/kosmos`, `/etc/rauc/kosmos.cert.pem`. Three consequences, and
+the third changes the immediate plan:
+
+1. **It now fails `verify-image.sh`**, and correctly. That check compares the
+   image's `system.conf` against `layout.sh rauc` output, which now says
+   `molniya-rpi5`. A pass would mean the check had stopped watching.
+2. **No bundle this tree builds will install on it.** Bundles now carry
+   `compatible=molniya-rpi5`; a box flashed from that image refuses them. This
+   is the compatible-string door working exactly as intended, on the correct
+   side of it.
+3. **So injecting the keyring into it is no longer worth doing.** That was the
+   plan of 2026-08-27 and the rename retires it: a rebuild carries the keyring
+   *and* the new name in one pass, and the artifact needs a rebuild regardless.
+   `inject-keyring.sh` keeps its purpose for any future image built without a
+   cert; it simply has no current customer.
+
+**What that leaves is a sequencing choice, not a problem.** The old artifact is
+still perfectly good for the one thing the boot test actually asks — does this
+image boot, does the firmware read `autoboot.txt`, does the backend report the
+running slot. None of that involves the name. So:
+
+- **Boot-test the existing image first.** It costs a card and an evening and it
+  de-risks the whole pipeline before two hours of rebuild. What it cannot tell
+  you is anything about `rauc install`.
+- **Then rebuild as MolniyaOS**, which is the artifact that gets flashed for
+  real: correct compatible, keyring present from `provision-rauc.sh`, and a
+  `verify-image.sh` pass that means something.
+
+Doing it the other way round spends the rebuild before knowing the image boots.
+
 ## Hardware Topology (permanent, decided 2026-07-29)
 
 Two Raspberry Pi 5s, with a deliberate and permanent split of roles:
