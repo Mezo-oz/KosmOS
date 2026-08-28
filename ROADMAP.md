@@ -38,8 +38,17 @@ Two strings in there mattered more than the rest:
 ### ✅ Done now — repo, worktree, artifact directory
 
 GitHub `Mezo-oz/KosmOS` → `Mezo-oz/MolniyaOS` (GitHub redirects the old URL, so
-existing clones keep working until they are re-pointed), the local worktree
-`X:\KosmOs` → `X:\MolniyaOS`, and `X:\kosmos-images` → `X:\molniya-images`.
+existing clones keep working until they are re-pointed; this worktree's `origin`
+is repointed at the canonical one), the local worktree `X:\KosmOs` →
+`X:\MolniyaOS`, and `X:\kosmos-images` → `X:\molniya-images`.
+
+**The artifact FILE inside it keeps its old name on purpose.** It is still
+`kosmos-rpi5.img.gz`, because that is what it is: an image whose `system.conf`
+says `compatible=kosmos-rpi5`. Renaming the file would be the only step in this
+whole rename that made a name *disagree* with the bytes under it — and in a
+project whose first rule about artifacts is that bytes are identity, a
+`molniya-rpi5.img.gz` that installs no molniya bundle is worse than an honestly
+stale filename. It gets the new name by being rebuilt, not by being renamed.
 
 ### ⏳ Not done — and the reason is cost, not oversight
 
