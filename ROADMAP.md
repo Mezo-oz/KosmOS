@@ -2445,11 +2445,35 @@ v0.5   ......    Protocol decoders (Iridium, AIS, APRS/direwolf)
 v0.6   ......    Field deployment kit (WiFi AP, WireGuard, web dashboard,
                  optional Tor bridge module)
 v0.7   ......    Monitoring stack (logging, Grafana, RF baseline)
-v0.8   ......    Image builder (reproducible, distributable .img.gz) —
+v0.8   ⏳ ACTIVE  Image builder (reproducible, distributable .img.gz) —
                  artifact-based build, A/B-ready partition layout laid down
                  from the very first image
-v0.9   ......    Atomic A/B updates (RAUC + tryboot), health-check gate,
+                 CODE-COMPLETE 2026-08-24, artifact rebuilt 08-26 to carry 4d.
+                 All four stages built and run on hardware. Artifact exists —
+                 3.49 GB, 9fedaa86…, 127 of 127 structural + release checks —
+                 and HAS NEVER BOOTED. What remains needs a card reader and a
+                 spare card, not code.
+                 ⚠️ That 127/127 is against the checks that existed when it was
+                 built. The keyring gate added 08-27 fails it: the image ships
+                 no /etc/rauc/kosmos.cert.pem, so rauc refuses every bundle.
+                 inject-keyring.sh fixes the artifact; provision-rauc.sh fixes
+                 every future build. See 4a PICK UP HERE.
+v0.9   ⏳ ACTIVE  Atomic A/B updates (RAUC + tryboot), health-check gate,
                  offline USB bundle install, automatic rollback
+                 BUILT: partition layout (three FAT partitions, p1 the selector
+                 outside both slots); boot backend, stock RAUC via
+                 bootloader=custom, no fork; rauc + rauc-service installed by
+                 stage 2; health check, exit code as the verdict, run on
+                 hardware; watchdog verified already armed by the base image.
+                 Signing PKI and bundle builder done 08-27 and proven
+                 off-target against a fixture — CA plus rotatable signing cert,
+                 verity bundles carrying tars, verified against the CA and
+                 rejected under an unrelated one.
+                 NOT DONE, and every item needs a booted box: rauc install has
+                 never written a slot, the backend has never flipped a real
+                 autoboot.txt, no rollback has ever happened, and the offline
+                 USB install has never been performed. A second image to update
+                 TO does not exist yet either.
 v1.0   ......    Full release — documented, tested, flashable image
 ```
 
