@@ -62,8 +62,11 @@ stale filename. It gets the new name by being rebuilt, not by being renamed.
 ### ⏳ Not done — and the reason is cost, not oversight
 
 **The built kernel is still `6.12.98-kosmos+`.** The config says `-molniya`; the
-*binary* on pi-server, the 32 MB tarball and the 3.1 GB build tree all still say
-`kosmos`. Only a kernel rebuild changes that, and it invalidates the pinned
+*binary* on pi-server and the 32 MB tarball in `~/molniya` both still say
+`kosmos`, and correctly — that is what they contain. (The 3.1 GB `linux` tree
+this bullet used to list alongside them is gone: deleted 2026-08-26 to find the
+disk the rebuild was short, so a rebuild starts with a re-clone at `f5a99b95…`.)
+Only a kernel rebuild changes the version, and it invalidates the pinned
 identity that `BENCHMARKS.md` publishes against — so the rename does not get to
 trigger it on its own. Until the next rebuild the tree and the binary disagree,
 which is recorded here so nobody reads it as a bug.
