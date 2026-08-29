@@ -88,19 +88,20 @@ advisory_warn() {
     ADVISORY_WARNINGS=$((ADVISORY_WARNINGS + 1))
 }
 
-# --- CRITICAL: this kernel is ours -----------------------------------------
+# --- CRITICAL: this kernel is the one this image shipped --------------------
 #
-# CONFIG_LOCALVERSION="-molniya" is what puts the string there. Matching only
-# "molniya" is the point: the older pattern also accepted "rt" or "6.12", which
-# a stock Raspberry Pi OS kernel satisfies, so it passed whether or not the
-# custom kernel was running.
-check_kernel_localversion() {
-    local kver
+# Derived, not spelled: stage 2 records the version it installed modules for,
+# and this compares uname -r against it. The literal it replaces ("uname -r
+# contains molniya") broke the day the project was renamed and the binary was
+# not; a missing record is a fail, not a pass. ROADMAP 4d.
+check_kernel_version() {
+    local kver want file="${MOLNIYA_KERNEL_VERSION_FILE:-/etc/molniya/kernel-version}"
     kver=$(uname -r)
-    if printf '%s' "$kver" | grep -qi "molniya"; then
-        ok "kernel is MolniyaOS" "$kver"
+    want=$(tr -d '[:space:]' 2>/dev/null < "$file" || true)  # 2> BEFORE <: see 4d
+    if [ -n "$want" ] && [ "$want" = "$kver" ]; then
+        ok "kernel is this image's" "$kver"
     else
-        critical_fail "kernel is MolniyaOS" "$kver — no '-molniya' in uname -r"
+        critical_fail "kernel is this image's" "shipped ${want:-NONE}, running $kver"
     fi
 }
 
@@ -371,7 +372,7 @@ echo "  kernel:  $(uname -r)"
 echo "  host:    $(uname -n)"
 echo ""
 echo "CRITICAL — a failure here means do not mark this slot good:"
-check_kernel_localversion
+check_kernel_version
 check_rt_preempt
 check_watchdog
 check_gnuradio

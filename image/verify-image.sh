@@ -170,24 +170,28 @@ verify_autoboot() {
 
 # ----------------------------------------------------------------------------
 # A slot's bootfs. The kernel-arming check is the one that matters: the package
-# ships kernel-molniya.img, the base ships kernel_2712.img, and stock config.txt
+# ships its own kernel*.img, the base ships kernel_2712.img, and stock config.txt
 # names neither -- so a naive overlay boots the stock kernel with MolniyaOS
 # modules sitting unused beside it, and nothing anywhere says so.
 # ----------------------------------------------------------------------------
 verify_boot() {
-    local slot="$1" part="$2"
+    local slot="$1" part="$2" kimg
     local dir="$MNT/boot$slot"
     step "bootfs $slot (p$part)"
     mount_ro "${LOOPDEV}p${part}" "$dir"
 
-    check "kernel-molniya.img present" sudo test -f "$dir/kernel-molniya.img"
     check_not "stock kernel_2712.img removed" sudo test -e "$dir/kernel_2712.img"
     check_not "stock kernel8.img removed" sudo test -e "$dir/kernel8.img"
     check "Pi 5 device tree present" sudo test -f "$dir/bcm2712-rpi-5-b.dtb"
     check "overlays present" sudo test -d "$dir/overlays"
 
-    check "config.txt arms our kernel" \
-        sudo grep -qx 'kernel=kernel-molniya.img' "$dir/config.txt"
+    # Derived, not named: arm_kernel writes whatever kernel*.img the package
+    # carries, so a literal here is a second copy of the answer, and it went
+    # stale when the project was renamed and the kernel binary did not. With
+    # both stock kernels asserted gone above, "the armed file exists" is enough.
+    kimg=$(sudo sed -n 's/^[[:space:]]*kernel=//p' "$dir/config.txt" | tr -d '[:space:]')
+    check "config.txt arms a kernel" test -n "$kimg"
+    check "armed kernel present" sudo test -f "$dir/$kimg"
     check_eq "cmdline.txt matches layout" \
         "$("$LAYOUT" cmdline "$slot" "$TARGET_DEV")" "$(sread "$dir/cmdline.txt")"
 

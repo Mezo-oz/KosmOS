@@ -257,6 +257,9 @@ install_kernel_modules() {
         die "copying modules failed"
     in_chroot "depmod -a $kver" || die "depmod failed for $kver"
 
+    # Into the image too: the health check compares uname -r against this. 4d.
+    sudo mkdir -p "$ROOTFS/etc/molniya"
+    echo "$kver" | sudo tee "$ROOTFS/etc/molniya/kernel-version" > /dev/null
     # Stage 3 needs boot/ from the same package. Recorded rather than copied:
     # this stage owns the rootfs and must not reach into the bootfs.
     echo "$kver" > "$CACHE/kernel-version"

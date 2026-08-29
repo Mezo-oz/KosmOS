@@ -156,11 +156,13 @@ gets swept along by a rename is no longer evidence of anything. The boot-test
 entry is the one that would have cost real time: an evening at the hardware,
 failing to log in.
 
-🔴 **And one pair of decisions that no string edit fixes** — the kernel binary
-keeps `-kosmos+`, while the health check now demands `-molniya` as a CRITICAL.
-Every image built between now and the next kernel rebuild fails its own health
-gate and is never marked good. See *The health check and the kernel binary
-disagree* in 4d; it blocks the rebuild and needs a decision.
+✅ **And one pair of decisions that no string edit could fix** — the kernel
+binary keeps `-kosmos+`, while the health check demanded `-molniya` as a
+CRITICAL, so every image built between now and the next kernel rebuild would
+have failed its own health gate and never been marked good. Closed the same day
+by deriving the expectation from a version the image records instead of spelling
+it; `verify-image.sh` turned out to hold the same kind of literal and was fixed
+with it. See *The health check and the kernel binary disagree* in 4d.
 
 ### ⚠️ The existing artifact is now a KosmOS image, and the tree builds MolniyaOS
 
@@ -1276,12 +1278,18 @@ so injecting a cert buys nothing a rebuild does not buy anyway. The reasoning is
 kept below because `inject-keyring.sh` is committed and keeps its purpose for any
 future image built without a cert — it simply has no current customer.
 
-**The rebuild, when it comes, is unblocked on the code side as of 2026-08-29**
-(`build-image.sh` no longer defaults to a kernel package that does not exist —
-see *The rename broke one path that pointed at real bytes*), and blocked on two
-things that are not code: the CA above, and ~1.5 GB of disk pi-server does not
-have. The cheapest 11 GB is the raw `kosmos-rpi5.img` still sitting in the build
-cache, whose compressed form is the verified artifact in step 1.
+**The rebuild is unblocked on the code side as of 2026-08-29.** Three separate
+blockers, all left by the rename and none of which would have surfaced before
+the build was already running: `build-image.sh` defaulted to a kernel package
+that does not exist; `verify-image.sh` asserted the literal `kernel-molniya.img`
+against a package that arms `kernel-kosmos.img`; and the health check demanded
+`-molniya` in `uname -r` as a CRITICAL, which would have produced an image that
+installs cleanly and then silently reverts. See *The rename broke one path that
+pointed at real bytes* and *The health check and the kernel binary disagree*.
+
+What is left is not code: **the CA above, and ~1.5 GB of disk pi-server does not
+have.** The cheapest 11 GB is the raw `kosmos-rpi5.img` still sitting in the
+build cache, whose compressed form is the verified artifact in step 1.
 
 **Why an injector and not a rebuild.** *(The decision this records is retired;
 the reasoning is why the tool exists.)* A `--force` rebuild is ~2 hours and the
@@ -1655,9 +1663,9 @@ Split by artifact, each independently runnable, sequencer on top — the shape
   slot: inside 4d the *other slot* is the fallback, so a
   second kernel in the same slot buys nothing and leaves an ambiguity that only
   bites when the `kernel=` line goes missing. The health check's localversion
-  assertion is the backstop if this is ever got wrong again — **and that
-  assertion is now a literal `molniya`, which is a problem in its own right; see
-  *The health check and the kernel binary disagree* in 4d.**
+  assertion is the backstop if this is ever got wrong again — and that assertion
+  is itself now derived from the version the image records, rather than a
+  spelling; see *The health check and the kernel binary disagree* in 4d.
 
   **Verified by mounting the finished image, not by trusting the log.**
   (This describes the first assembly, by hand. That image was later deleted
@@ -2356,9 +2364,55 @@ creates*, not in either artifact on its own.
    mark-good chain, and `verify-image.sh`, and none of it is proven until a box
    boots.
 
-**Not decided here — deliberately.** Option 1 is a call about published data.
-Flagged before the rebuild rather than discovered by a box that will not
-commit an update and cannot say why.
+##### ✅ Resolved 2026-08-29 — option 3, derived from the image
+
+**The image now records the kernel it shipped, and the check reads it.**
+`build-rootfs.sh` writes `/etc/molniya/kernel-version` in the same function that
+installs the modules — the one place that already knows the answer and already
+had to parse it — and `molniya-health-check.sh` compares `uname -r` against that
+file. An exact match, not a substring: the old test would have passed a kernel
+merely *named* like ours, which is the failure mode it was narrowed to prevent
+in the first place, one level up.
+
+**A missing record is a FAIL.** A slot that cannot say which kernel it shipped
+does not get marked good — the direction `molniya-mark-good.sh` already takes
+for "could not decide", and the safe one: it costs a rollback to a slot that
+worked, where the other direction commits a slot nobody vouched for.
+
+Five cases exercised off-target before it was believed: exact match, mismatch,
+missing file, empty file, and a value padded with whitespace. **The missing-file
+case is why the redirection order in that line is deliberate** —
+`tr ... 2>/dev/null < "$file"` and not `tr ... < "$file" 2>/dev/null`. Bash
+applies redirections left to right, so with `2>` last the shell's own *"No such
+file or directory"* is emitted before stderr has been silenced, and lands in the
+journal of every boot of a slot that is already failing. Swapping them is the
+whole fix, and it is invisible unless the failing case is actually run.
+
+**Gated so it cannot recur.** `verify-rauc.sh` now asserts, per slot, that
+`/etc/molniya/kernel-version` is non-empty *and* that `/lib/modules/<that
+version>` exists in the same root. The two are halves of one fact: a recorded
+kernel with no modules beside it is a slot that boots something it cannot load a
+driver for.
+
+**And the same literal was hiding in `verify-image.sh`**, which the rename had
+also left pointing at a name: it asserted `kernel-molniya.img` exists and that
+`config.txt` says `kernel=kernel-molniya.img`, while `arm_kernel` writes
+*whatever `kernel*.img` the package carries*. So the verifier held a second copy
+of the answer — the exact habit its own header claims it was written to avoid —
+and would have failed the MolniyaOS rebuild, which arms `kernel-kosmos.img`. It
+now reads the `kernel=` line and checks that the file it names is present; with
+both stock kernels already asserted gone, that is the whole invariant.
+
+⚠️ **Still open, and deliberately not changed here: `02a-verify-kernel.sh` greps
+for `molniya` too.** On pi-server (`6.12.98-kosmos+`) it now reports **6 passed,
+1 failed**, not the 7/0 this file records from 2026-08-02 — that entry is a
+record of a run against a differently-named kernel and cannot be reproduced with
+the current tree. The consequence is bounded: 02a always exits 0 on purpose, so
+it is a report, not a gate. It is not fixed the same way because it runs on
+hand-installed boxes that have no image and no `/etc/molniya/kernel-version`, so
+"derive it" needs a different source there — most likely the `kernel-version`
+file that ships inside the kernel package beside it. A decision, not an
+oversight.
 
 ##### ⚠️ The keyring was never installed — 127 of 127 on an image that could not update (found 2026-08-27)
 
@@ -2863,13 +2917,16 @@ v0.8   ⏳ ACTIVE  Image builder (reproducible, distributable .img.gz) —
                  the rebuild carries the cert and the name in one pass.
                  It is still the right card for the boot test — that protocol
                  exercises rauc status, not install.
-                 🔴 The rebuild is BLOCKED, and not on code (08-29): the
-                 health check demands -molniya in uname -r as a CRITICAL while
-                 the kernel binary is still -kosmos+, so the image it produces
-                 never marks itself good. Needs a decision — see 4d.
-                 Also blocked on 1.5 GB of disk pi-server does not have.
-                 ✅ build-image.sh no longer defaults to a kernel package that
-                 does not exist (the rename broke that path). See 4a.
+                 ✅ Three rebuild blockers closed 08-29, all left by the
+                 rename: build-image.sh defaulted to a kernel package that
+                 does not exist; verify-image.sh asserted the literal
+                 kernel-molniya.img while arm_kernel writes what the package
+                 carries; and the health check demanded -molniya in uname -r
+                 as a CRITICAL while the binary is still -kosmos+, so every
+                 image built would have failed its own gate and never been
+                 marked good. The last is now derived from a kernel-version
+                 file the image records, and gated by verify-rauc.sh. See 4d.
+                 Remaining before a rebuild: the root CA, and 1.5 GB of disk.
 v0.9   ⏳ ACTIVE  Atomic A/B updates (RAUC + tryboot), health-check gate,
                  offline USB bundle install, automatic rollback
                  BUILT: partition layout (three FAT partitions, p1 the selector

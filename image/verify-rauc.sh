@@ -136,7 +136,7 @@ verify_rauc() {
     # mount prefix the caller happens to use. This script does not mount
     # anything and must not hold an opinion about where its caller did.
     local dir="$1" slot="$2"
-    local conf handler selp mp opts
+    local conf handler selp mp opts kver
 
     conf="$dir/etc/rauc/system.conf"
     check "rauc system.conf present" sudo test -f "$conf"
@@ -154,6 +154,16 @@ verify_rauc() {
     check "rauc CLI installed" sudo test -x "$dir/usr/bin/rauc"
     check "rauc.service present (the rauc-service package)" \
         sudo test -f "$dir/usr/lib/systemd/system/rauc.service"
+
+    # The health check compares `uname -r` against this file rather than
+    # grepping for a name, so a slot missing it critical-fails on every boot and
+    # is never marked good -- an update that installs cleanly and then silently
+    # reverts. It is cross-checked against the module tree because the two are
+    # halves of one fact: a recorded kernel with no modules in the same root is
+    # a slot that boots something it cannot load a driver for. ROADMAP 4d.
+    kver="$(sread "$dir/etc/molniya/kernel-version" | tr -d '[:space:]')"
+    check "kernel-version recorded for the health check" test -n "$kver"
+    check "and its modules are in this root" sudo test -d "$dir/lib/modules/$kver"
 
     check "mark-good script installed" \
         sudo test -x "$dir/usr/local/lib/molniya/molniya-mark-good.sh"
