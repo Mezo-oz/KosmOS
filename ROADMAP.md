@@ -68,11 +68,33 @@ identity that `BENCHMARKS.md` publishes against — so the rename does not get t
 trigger it on its own. Until the next rebuild the tree and the binary disagree,
 which is recorded here so nobody reads it as a bug.
 
-**pi-server's working paths.** `/var/tmp/kosmos-build`, `/var/tmp/kosmos-img`,
-`~/kosmos`, the stray `/var/tmp/kosmos-*.log`. Scratch, cheap to rename, and one
-of them is load-bearing: `/var/tmp/kosmos-build/rootfs` is the 4991 MiB SATCOM
-cache that a rebuild would otherwise spend two hours recreating. Rename by
-moving, never by deleting and rebuilding.
+**~~pi-server's working paths.~~** ✅ **Done 2026-08-29, by moving.**
+`/var/tmp/kosmos-build` → `/var/tmp/molniya-build` and `~/kosmos` →
+`~/molniya` — which matters more than tidiness, because every image script
+defaults to `/var/tmp/molniya-build` and would otherwise have found no cache and
+started the two-hour SATCOM rootfs over. The 4991 MiB cache came across intact,
+which was the whole point of moving rather than rebuilding.
+
+**The tarball inside `~/molniya` keeps its old name on purpose** — it is still
+`kosmos-kernel-6.12.98-kosmos+.tar.gz`, because the kernel binary inside it is
+`6.12.98-kosmos+`. The directory is scratch and names nothing; the file names its
+bytes. `build-image.sh` resolves by glob, so nothing has to lie.
+
+Two things in the cache also needed reconciling, and both were one move rather
+than a rebuild: `/usr/local/share/kosmos/build-manifest.txt` inside the rootfs
+became `share/molniya`, and `/etc/molniya/kernel-version` was written in, because
+that cache predates the stage that now writes it and a resumed build would
+otherwise have produced an image `verify-rauc.sh` rejects.
+
+⚠️ **Still stale, and it will bite the rebuild: `/var/tmp/kosmos-img`.** That is
+the *script staging directory* — copies of `build-image.sh`, `layout.sh`,
+`verify-image.sh` and friends taken on 2026-08-26, before the rename and before
+every fix of 2026-08-29. It is 176 KB and it is not a cache, it is the code.
+**Re-stage the current tree there before building anything**; do not move it,
+because moving it would carry the old scripts under the new name.
+
+The `/var/tmp/kosmos-*.log` files keep their names. They are records of runs that
+happened, not paths anything reads.
 
 **`/boot/firmware/kosmos` on the installed system** — the `os_prefix` directory
 the firmware reads. Renaming it means editing `config.txt` in the same breath,
@@ -116,11 +138,13 @@ not.** A directory named `kosmos` holding scratch names nothing and should move.
 The tarball inside keeps its name for the same reason `kosmos-rpi5.img.gz` keeps
 its — it names its bytes. The glob does not care, so nothing has to lie.
 
-**Same class, still open — the build cache.** Every image script defaults to
-`/var/tmp/molniya-build`; the real cache is `/var/tmp/kosmos-build`, 18 GB.
-This one fails *late and expensively* rather than fast: nothing errors, the
-build simply does not find its cache and starts the two-hour SATCOM rootfs over,
-on a box with 3.4 GB free. Fix it the same way — by moving.
+**Same class, and worse — the build cache.** ✅ **Closed 2026-08-29 by moving
+it.** Every image script defaults to `/var/tmp/molniya-build`; the real cache was
+`/var/tmp/kosmos-build`, 18 GB. This one would have failed *late and expensively*
+rather than fast: nothing errors, the build simply does not find its cache and
+starts the two-hour SATCOM rootfs over, on a box that had 3.4 GB free. Worth
+holding onto as the shape of the problem — the fast, loud failure was the lucky
+one.
 
 ✅ **And the good news, measured rather than assumed: the rename does not
 invalidate the 4991 MiB rootfs cache.** The obvious fear is that it does, which
@@ -1287,9 +1311,16 @@ against a package that arms `kernel-kosmos.img`; and the health check demanded
 installs cleanly and then silently reverts. See *The rename broke one path that
 pointed at real bytes* and *The health check and the kernel binary disagree*.
 
-What is left is not code: **the CA above, and ~1.5 GB of disk pi-server does not
-have.** The cheapest 11 GB is the raw `kosmos-rpi5.img` still sitting in the
-build cache, whose compressed form is the verified artifact in step 1.
+**Disk is no longer a blocker either.** The raw `kosmos-rpi5.img` was deleted
+from the build cache on 2026-08-29 — superseded by the rename, re-hashed on the
+Windows drive first — taking pi-server from 3.4 GB free to **14 GB**, against
+the 10504 MiB an assembled image allocates. The cache itself moved to
+`/var/tmp/molniya-build` with the 4991 MiB rootfs intact.
+
+**So the only thing standing between here and a MolniyaOS artifact is the CA
+above** — plus one operational step that is easy to forget: `/var/tmp/kosmos-img`
+holds *scripts* from 2026-08-26, not a cache. Re-stage the current tree there
+first, or the build runs the code all of this fixed.
 
 **Why an injector and not a rebuild.** *(The decision this records is retired;
 the reasoning is why the tool exists.)* A `--force` rebuild is ~2 hours and the
@@ -1347,11 +1378,14 @@ card intact until the new one is proven**; it is the only route back.
    (`verify-image.sh`). The injection into the existing artifact is retired;
    the rebuild carries the keyring and the name in one pass. See the top of
    this section and 4d.
-7. **The build host cannot rebuild yet, and it is disk, not code.** pi-server
-   has 3.4 GB free against ~1.5 GB short at the last `--force`. 11 GB of the
-   18 GB build cache is the raw `kosmos-rpi5.img`, superseded by the rename and
-   already streamed out and verified — that is where the room is. Verified
-   2026-08-29; nothing has been deleted.
+7. ~~The build host cannot rebuild yet, and it is disk, not code~~ ✅ **closed
+   2026-08-29.** pi-server had 3.4 GB free against ~1.5 GB short at the last
+   `--force`. The raw `kosmos-rpi5.img` was deleted — superseded by the rename,
+   and its compressed form on the Windows drive was re-hashed first and still
+   matches. **14 GB free**, against the 10504 MiB an assembled image actually
+   allocates, so the next `--force` fits with room rather than by inches. Its
+   `.manifest` and `.sha256` were kept: 8 KB, and they are the build host's own
+   record of what that artifact was.
 
 *(Known-open 4 of the previous list, `rauc/rauc#1599`, is closed: the gate it
 named fired on 2026-08-24 and the re-check was done on 2026-08-26. The answer
@@ -2926,7 +2960,10 @@ v0.8   ⏳ ACTIVE  Image builder (reproducible, distributable .img.gz) —
                  image built would have failed its own gate and never been
                  marked good. The last is now derived from a kernel-version
                  file the image records, and gated by verify-rauc.sh. See 4d.
-                 Remaining before a rebuild: the root CA, and 1.5 GB of disk.
+                 ✅ Disk cleared 08-29 too: the superseded raw image was
+                 deleted (3.4 GB free -> 14 GB) and the build cache moved to
+                 the name the scripts look for. Remaining before a rebuild:
+                 the root CA, and re-staging the scripts on pi-server.
 v0.9   ⏳ ACTIVE  Atomic A/B updates (RAUC + tryboot), health-check gate,
                  offline USB bundle install, automatic rollback
                  BUILT: partition layout (three FAT partitions, p1 the selector
