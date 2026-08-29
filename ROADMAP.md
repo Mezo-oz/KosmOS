@@ -16,13 +16,22 @@ one checkbox.
 
 ### ✅ Done — the whole work tree
 
-Code, docs, CI, unit tests, file and directory names. Verified rather than
-assumed: **`grep -ri kosmos` outside this file returns nothing at all.** Inside
-it there are fourteen hits and every one is deliberate — the history note at the
-top, and this section, which cannot describe what was renamed without naming it.
-That is the distinction worth holding: the old name survives only where it is
-the *subject*, never where it is a path, a config key, or an identifier. 39
-shell scripts shellcheck clean, `gap_math` 15/15, CI green at `071b12e`.
+Code, docs, CI, unit tests, file and directory names. 39 shell scripts
+shellcheck clean, `gap_math` 15/15, CI green at `071b12e`.
+
+The rule the sweep followed: **the old name survives only where it is the
+*subject*, never where it is a path, a config key, or an identifier.**
+
+⚠️ **The evidence originally offered for that — `grep -ri kosmos` outside this
+file returns nothing at all — was the wrong test, and 2026-08-29 shows why.** A
+clean grep is equally consistent with a rename that was complete and with one
+that went too far: it cannot tell a plan from a record. It was clean while
+`build-image.sh` pointed at a file that does not exist and while the boot-test
+protocol told you to log in as a user the image does not have. Three files
+carry `kosmos` today and each is deliberate: `ROADMAP.md` (history, and this
+section), `BENCHMARKS.md` (the measured kernel identity), and
+`image/build-image.sh` (a comment explaining why the tarball keeps its name).
+See *The sweep also rewrote records of things that happened*.
 
 Two strings in there mattered more than the rest:
 
@@ -69,6 +78,89 @@ moving, never by deleting and rebuilding.
 the firmware reads. Renaming it means editing `config.txt` in the same breath,
 and getting it wrong makes pi-server unbootable. There is no reason to touch it
 before the next kernel install, which has to rewrite it anyway.
+
+### ⚠️ The rename broke one path that pointed at real bytes (found 2026-08-29)
+
+The section above states the rule the rename followed: *the old name survives
+only where it is the subject, never where it is a path.* That reads as a
+guarantee that no path was harmed. One was.
+
+`image/build-image.sh` defaulted its kernel package to
+`$HOME/molniya/molniya-kernel-6.12.98-molniya+.tar.gz`. **No such file exists.**
+The package on pi-server is `~/kosmos/kosmos-kernel-6.12.98-kosmos+.tar.gz`, and
+it is *correctly* named that, because the kernel binary inside it is
+`6.12.98-kosmos+` — the one thing the rename deliberately did not touch. So the
+sweep renamed a path whose name is derived from a version it had just decided to
+leave alone, and the two halves of that decision were never checked against each
+other.
+
+**It would have bitten on the MolniyaOS rebuild — the step this file schedules
+immediately after the boot test.** And it would not have bitten cleanly:
+`stage_rootfs` guarded the path, `stage_assemble` did not, and on a resume build
+(rootfs cached, image not — the actual state of the box) stage 2 is skipped
+entirely, so the guard never runs and the failure lands inside
+`assemble-image.sh` with the loop device attached and both slots mounted.
+
+**Fixed by resolving instead of naming.** `build-image.sh` now discovers exactly
+one `*-kernel-*.tar.gz` in `$MOLNIYA_KERNEL_DIR` (default `$HOME/molniya`), and
+the resolution happens once, before stage 1, so both consumers get a checked
+path. Zero matches and two matches are both errors — picking the newest of
+several would build an image against a kernel nobody chose, and that mismatch
+does not surface until a box boots a kernel whose modules it does not have.
+Six cases exercised off-target before it was believed: no directory, zero, one,
+two, a pin that is missing, and a pin that is present. A neighbouring `linux/`
+build tree is correctly not a match.
+
+**Which decides how `~/kosmos` gets renamed: the directory moves, the file does
+not.** A directory named `kosmos` holding scratch names nothing and should move.
+The tarball inside keeps its name for the same reason `kosmos-rpi5.img.gz` keeps
+its — it names its bytes. The glob does not care, so nothing has to lie.
+
+**Same class, still open — the build cache.** Every image script defaults to
+`/var/tmp/molniya-build`; the real cache is `/var/tmp/kosmos-build`, 18 GB.
+This one fails *late and expensively* rather than fast: nothing errors, the
+build simply does not find its cache and starts the two-hour SATCOM rootfs over,
+on a box with 3.4 GB free. Fix it the same way — by moving.
+
+✅ **And the good news, measured rather than assumed: the rename does not
+invalidate the 4991 MiB rootfs cache.** The obvious fear is that it does, which
+would put two hours back on the rebuild. It does not. Exactly two `kosmos`-named
+things exist anywhere under it: `/usr/lib/modules/6.12.98-kosmos+`, which is
+correct and must stay, and `/usr/local/share/kosmos/build-manifest.txt`, which
+should be `share/molniya`. Every other renamed path — `/etc/molniya`,
+`/usr/local/lib/molniya` — is written at assemble time, not into the cache. One
+directory move inside the rootfs, not a rebuild.
+
+### ⚠️ The sweep also rewrote records of things that happened (restored 2026-08-29)
+
+The broken path above is one symptom; the class is larger. `grep -ri kosmos`
+returning nothing was taken as proof the rename was complete. It also proves
+that **every record of a past measurement had been re-badged**, because those
+records are made of the same strings. Corrected against the box and the image
+rather than against memory:
+
+| where | said | says now |
+|---|---|---|
+| `BENCHMARKS.md` env table | `uname -r` = `6.12.98-molniya+` | `6.12.98-kosmos+`, with a note not to "fix" it |
+| `BENCHMARKS.md` A↔C switch | edit `molniya/cmdline.txt` | `kosmos/cmdline.txt` — `os_prefix=kosmos/` on the box |
+| boot-test protocol | log in as `molniya`; run `/usr/local/lib/molniya/…` | `kosmos` — **every command in step 4 was a `No such file`** |
+| stage-3 verification (96 checks) | `kernel-molniya.img`, `molniya` account | the names the image carries |
+| artifact provenance block | `kernel 6.12.98-molniya+` | quoted verbatim from the manifest |
+| 4a artifact filename | `molniya-rpi5.img.gz` | `kosmos-rpi5.img.gz` — the file the rename decided to keep |
+
+**The rule that was missing:** a name is renameable when it is a *plan*, and
+frozen when it is a *record*. The tree, the config keys and the compatible
+string are plans. `uname -r` output, a manifest, an account inside a built
+image, and the protocol for driving that image are records — and a record that
+gets swept along by a rename is no longer evidence of anything. The boot-test
+entry is the one that would have cost real time: an evening at the hardware,
+failing to log in.
+
+🔴 **And one pair of decisions that no string edit fixes** — the kernel binary
+keeps `-kosmos+`, while the health check now demands `-molniya` as a CRITICAL.
+Every image built between now and the next kernel rebuild fails its own health
+gate and is never marked good. See *The health check and the kernel binary
+disagree* in 4d; it blocks the rebuild and needs a decision.
 
 ### ⚠️ The existing artifact is now a KosmOS image, and the tree builds MolniyaOS
 
@@ -298,7 +390,7 @@ habit. It is now a rule, because stage 4 showed what it costs when it slips.
 
 `build-image.sh --stream` writes a **gzip stream** to stdout. It also printed
 the image path there when it finished, the way `fetch-base.sh` does — and that
-appended a trailing `/var/tmp/molniya-build/molniya-rpi5.img` and a newline to
+appended a trailing `/var/tmp/kosmos-build/kosmos-rpi5.img` and a newline to
 the compressed artifact.
 
 What makes it worth a numbered rule rather than a bug fix is the failure mode.
@@ -604,9 +696,11 @@ isolated before any published number is generated.
 - [x] **Make verification possible** — *done, `147fa10`.* `CONFIG_IKCONFIG` +
   `CONFIG_IKCONFIG_PROC` added, and the `/proc/config.gz` read fixed (it was
   grepping the compressed bytes, which can never match).
-- [x] **Rebuild with `CONFIG_LOCALVERSION="-molniya"`** — *done 2026-07-31 on
-  pi-server, installed and booted by 2026-08-02.* The build produced
-  **`6.12.98-molniya+`**, the localversion took effect, and the module directories
+- [x] **Rebuild with a distinct `CONFIG_LOCALVERSION`** — *done 2026-07-31 on
+  pi-server, installed and booted by 2026-08-02, with `-kosmos` as the string of
+  the day; the config now says `-molniya` and the binary will not until the next
+  rebuild.* The build produced
+  **`6.12.98-kosmos+`**, the localversion took effect, and the module directories
   are separated. `02a-verify-kernel.sh` now reports **7 passed, 0 failed** on the
   running kernel — the FAIL this entry used to predict was against the stock
   kernel and is gone.
@@ -784,10 +878,12 @@ positioning leans harder on pillars 2 and 3.
    The code existed; the activation did not. It survived four commits and a
    hardware pre-flight, which is exactly why "verified, not written" is the rule.*
 ✅ Kernel version string — the step-9 rebuild happened 2026-07-31 and produced
-   **`6.12.98-molniya+`**, so `CONFIG_LOCALVERSION` took effect and this kernel's
+   **`6.12.98-kosmos+`** (the pre-rename localversion; the config now says
+   `-molniya` and the binary will not until it is rebuilt), so
+   `CONFIG_LOCALVERSION` took effect and this kernel's
    modules land in their own directory. Built from the pinned commit
    `f5a99b95`. ✅ **Installed and booted — confirmed on hardware 2026-08-02.**
-   pi-server runs `6.12.98-molniya+`; `02a-verify-kernel.sh` reports **7 passed, 0
+   pi-server runs `6.12.98-kosmos+`; `02a-verify-kernel.sh` reports **7 passed, 0
    failed** (PREEMPT_RT in `uname -v`, 1000 Hz, governor `performance`, USB, AX.25,
    `/proc/config.gz`). The RT kernel boots on real hardware and the localversion
    separated the module directories as intended.
@@ -1149,38 +1245,46 @@ to carry 4d.** The base-image question 4d deferred here is decided, all four
 stages are built and have run on hardware, and the release artifact exists.
 What is left is a boot test, which needs hardware this box does not have.
 
-##### 📌 PICK UP HERE — updated 2026-08-27
+##### 📌 PICK UP HERE — updated 2026-08-29
 
-**⚠️ The artifact below cannot install an update, and the fix needs a decision
-only you can make.** It ships no RAUC keyring — see *The keyring was never
-installed* in 4d — so `rauc install` fails with `failed to load CA file`. The
-127/127 pass is real and says nothing about this, because the check that would
-have caught it did not exist until 2026-08-27.
+**Two things stand, in this order, and the first needs hands rather than a
+decision:**
 
-It is still the right card to flash for the boot test: that protocol exercises
-`rauc status`, not `install`, and every line of it stands. What a green boot
-test will no longer let you conclude is that the update path works.
+1. **Boot-test the existing artifact.** `X:\molniya-images\kosmos-rpi5.img.gz`,
+   3.49 GB, verified intact on 2026-08-29 — `4c5d1083…` still matches the
+   `.sha256` beside it. It is a KosmOS image and that does not matter here: the
+   protocol below exercises boot, `autoboot.txt` and slot identity, none of
+   which involve the name. It needs a card reader on another machine and a
+   spare card. **Keep pi-server's card intact until the new one is proven.**
+2. **Create the root CA — yours, and nothing downstream moves without it.**
 
-**To make it updateable — two commands, and the first one is yours:**
+   ```sh
+   # ON REMOVABLE MEDIA, and never on pi-server or in the repo. This is the
+   # crown jewel: it is the trust root every MolniyaOS box will carry, and
+   # make-keys.sh refuses a destination inside the work tree.
+   image/rauc/make-keys.sh ca /media/<offline>/molniya-ca
+   ```
 
-```sh
-# 1. Create the root CA. ON REMOVABLE MEDIA, and never on pi-server or in the
-#    repo. This is the crown jewel: it is the trust root every MolniyaOS box will
-#    carry, and make-keys.sh refuses a destination inside the work tree.
-image/rauc/make-keys.sh ca /media/<offline>/molniya-ca
+   It is no longer wanted for an injection — see below — but `provision-rauc.sh`
+   consumes it on every build, so the MolniyaOS rebuild cannot produce an
+   updateable image until it exists.
 
-# 2. Inject its public cert into the existing image, on pi-server, in place.
-ssh pi-server 'molniya-img/image/inject-keyring.sh \
-    --expect 9fedaa86f1e35226ba60cbf8d159aa6dae096aea369b2dda377b9d219da33fa1 \
-    --cert ~/ca.cert.pem'
-```
+**~~Inject the keyring into the existing artifact~~ — retired 2026-08-28 by the
+rename.** That was this section's headline for one day. The artifact is a KosmOS
+image; no bundle this tree builds will install on it whatever keyring it carries,
+so injecting a cert buys nothing a rebuild does not buy anyway. The reasoning is
+kept below because `inject-keyring.sh` is committed and keeps its purpose for any
+future image built without a cert — it simply has no current customer.
 
-Then re-verify (`verify-image.sh --release`, which now asserts the keyring),
-re-stream, and **retire the old digest everywhere it appears — this file
-included.** The injector prints the new one on stdout and rewrites
-`<image>.sha256`; nothing else updates itself.
+**The rebuild, when it comes, is unblocked on the code side as of 2026-08-29**
+(`build-image.sh` no longer defaults to a kernel package that does not exist —
+see *The rename broke one path that pointed at real bytes*), and blocked on two
+things that are not code: the CA above, and ~1.5 GB of disk pi-server does not
+have. The cheapest 11 GB is the raw `kosmos-rpi5.img` still sitting in the build
+cache, whose compressed form is the verified artifact in step 1.
 
-**Why an injector and not a rebuild.** A `--force` rebuild is ~2 hours and the
+**Why an injector and not a rebuild.** *(The decision this records is retired;
+the reasoning is why the tool exists.)* A `--force` rebuild is ~2 hours and the
 last one came up ~1.5 GB short on disk. `image/inject-keyring.sh` is committed,
 takes the input digest as a mandatory argument, and prints the output digest —
 so the modified artifact's history is as auditable as a pipeline run, which is
@@ -1188,23 +1292,28 @@ what provenance actually means. Hands on a mounted image is the thing that
 would break it. It modifies in place because the image is 11 GB and pi-server
 has 3.4 GB free; there is nowhere to put a copy.
 
-**⚠️ Two images' worth of confusion is now possible on the Windows drive.** The
-digest below is the *pre-injection* one. Whoever flashes needs to know which
-`.img.gz` in `X:\molniya-images\` is current, and the only durable answer is the
-`.sha256` beside it.
+**⚠️ Whoever flashes needs to know which `.img.gz` in `X:\molniya-images\` is
+current, and the only durable answer is the `.sha256` beside it.** There is one
+today; there will be two the moment the MolniyaOS rebuild lands.
 
-**Artifact (pre-injection):** `X:\molniya-images\molniya-rpi5.img.gz`, **3.49 GB**,
-raw digest `9fedaa86f1e35226ba60cbf8d159aa6dae096aea369b2dda377b9d219da33fa1`,
-round trip confirmed by decompressing to `sha256sum` on the receiving end. It
+**Artifact:** `X:\molniya-images\kosmos-rpi5.img.gz`, **3.49 GB**, raw digest
+`9fedaa86f1e35226ba60cbf8d159aa6dae096aea369b2dda377b9d219da33fa1`, round trip
+confirmed by decompressing to `sha256sum` on the receiving end. **Re-verified
+2026-08-29:** the `.img.gz` still hashes to `4c5d1083…` as recorded, and
+`9fedaa86…` still matches the raw image's digest file on pi-server. It
 supersedes `b1c4c74c…`, which predated 4d entirely and is gone.
 
 Its provenance says what is actually in it, which is the point of having
-rebuilt rather than patched:
+rebuilt rather than patched — **quoted verbatim from the manifest on the build
+host, and left in the old name deliberately.** The 2026-08-28 rename rewrote
+this block's `kernel` line to `6.12.98-molniya+`, which the artifact has never
+said. A provenance record that gets swept along by a rename is not a provenance
+record:
 
 ```
 apt_userspace  rt-tests stress-ng rauc rauc-service
 satcom_stack   built from source
-kernel         6.12.98-molniya+
+kernel         6.12.98-kosmos+
 base_sha256    acff736ca7945e3b305f07cda4abdb870910e12634991da69783611756e381b3
 ```
 
@@ -1223,11 +1332,18 @@ card intact until the new one is proven**; it is the only route back.
 5. ~~No build stage installs `rauc`~~ ✅ **closed 2026-08-26** — stage 2's
    `APT_PACKAGES` now carries `rauc rauc-service`, and `verify-image.sh`
    asserts both are in the finished image. See 4d.
-6. **The artifact ships no RAUC keyring, so it cannot install a bundle.**
-   Fixed in the pipeline for every future build (`provision-rauc.sh`) and
-   gated so it cannot recur (`verify-image.sh`); the *existing* artifact needs
-   `inject-keyring.sh` run against it, which waits on a CA. See the top of this
-   section and 4d.
+6. **The artifact ships no RAUC keyring, so it cannot install a bundle** — and
+   after the rename it could not install one anyway, keyring or not, because
+   its `compatible` is `kosmos-rpi5`. Fixed in the pipeline for every future
+   build (`provision-rauc.sh`) and gated so it cannot recur
+   (`verify-image.sh`). The injection into the existing artifact is retired;
+   the rebuild carries the keyring and the name in one pass. See the top of
+   this section and 4d.
+7. **The build host cannot rebuild yet, and it is disk, not code.** pi-server
+   has 3.4 GB free against ~1.5 GB short at the last `--force`. 11 GB of the
+   18 GB build cache is the raw `kosmos-rpi5.img`, superseded by the rename and
+   already streamed out and verified — that is where the room is. Verified
+   2026-08-29; nothing has been deleted.
 
 *(Known-open 4 of the previous list, `rauc/rauc#1599`, is closed: the gate it
 named fired on 2026-08-24 and the re-check was done on 2026-08-26. The answer
@@ -1251,13 +1367,16 @@ its own. A check carrying its own copy of the answer is a check that goes on
 agreeing with itself after `layout.sh` changes — which is exactly what happened
 to the 4096 MiB slot size, and would have happened again here.
 
-**All 96 hold**, in both slots: the seven partitions match `layout.sh` to the
+**All 96 hold**, in both slots — *and the names below are the ones the image
+actually carries, restored 2026-08-29 after the rename swept this paragraph too;
+it is a record of a run against a KosmOS image and cannot be re-badged after the
+fact:* the seven partitions match `layout.sh` to the
 sector; `autoboot.txt` is byte-identical to the emitter and is the only file on
-p1; each bootfs holds `kernel-molniya.img` with the stock `kernel_2712.img` and
-`kernel8.img` gone and `kernel=kernel-molniya.img` written into `config.txt`;
+p1; each bootfs holds `kernel-kosmos.img` with the stock `kernel_2712.img` and
+`kernel8.img` gone and `kernel=kernel-kosmos.img` written into `config.txt`;
 each root carries its own fstab, an identical `slots.conf`, modules and a
-populated `modules.dep` for `6.12.98-molniya+`, the health check and
-`slot-identity.sh`, and all five SATCOM binaries; the `molniya` account is uid
+populated `modules.dep` for `6.12.98-kosmos+`, the health check and
+`slot-identity.sh`, and all five SATCOM binaries; the `kosmos` account is uid
 1000 with `/bin/bash`, `authorized_keys` is 0600 `1000:1000` with two keys,
 the sudoers drop-in is 0440, `ssh.service` is enabled, `userconfig.service` is
 not, and the sshd drop-in is key-only. No `pi` user survives in either slot.
@@ -1425,9 +1544,9 @@ Split by artifact, each independently runnable, sequencer on top — the shape
      being missed is a card that eats slot B on first boot.
 
   ✅ **`--kernel` exercised after all.** The ROADMAP's claim that no kernel
-  tarball survives on pi-server was wrong — `~/molniya/molniya-kernel-6.12.98-molniya+.tar.gz`
+  tarball survives on pi-server was wrong — `~/kosmos/kosmos-kernel-6.12.98-kosmos+.tar.gz`
   has been sitting there since 2026-07-31 (corrected at its source below). A
-  second run with `--kernel` installed the modules for `6.12.98-molniya+` and ran
+  second run with `--kernel` installed the modules for `6.12.98-kosmos+` and ran
   `depmod` inside the chroot, and the manifest records the version. So the
   rootfs is now a real MolniyaOS rootfs, not base plus bench tools.
 
@@ -1521,29 +1640,35 @@ Split by artifact, each independently runnable, sequencer on top — the shape
   update that believes it is writing to the spare.
 
   **The kernel-arming step is the one that would have made the image a
-  convincing fake.** The package ships `kernel-molniya.img`; the base bootfs
+  convincing fake.** The package ships `kernel-kosmos.img` (it will be
+  `kernel-molniya.img` after the next kernel rebuild; the point below is the same
+  either way); the base bootfs
   ships `kernel_2712.img` and `kernel8.img`; and the stock `config.txt` has **no
   `kernel=` line at all**, so the Pi 5 firmware auto-selects `kernel_2712.img`.
   Overlay the two naively and the result boots the **stock 6.18.34 kernel** with
   MolniyaOS modules sitting unused beside it — no `PREEMPT_RT`, no latency
   guarantee, and nothing on the box mentioning it. Found by reading the package
-  before the first assembly rather than after. Stage 3 now writes
-  `kernel=kernel-molniya.img` into each slot's `config.txt` and deletes the stock
-  kernels from that slot: inside 4d the *other slot* is the fallback, so a
+  before the first assembly rather than after. Stage 3 now writes a `kernel=`
+  line into each slot's `config.txt` — **naming whatever `kernel*.img` the
+  package actually contains, not a literal**, which is why `arm_kernel` survived
+  the rename without being touched — and deletes the stock kernels from that
+  slot: inside 4d the *other slot* is the fallback, so a
   second kernel in the same slot buys nothing and leaves an ambiguity that only
-  bites when the `kernel=` line goes missing. The health check's "kernel carries
-  `-molniya`" assertion is the backstop if this is ever got wrong again.
+  bites when the `kernel=` line goes missing. The health check's localversion
+  assertion is the backstop if this is ever got wrong again — **and that
+  assertion is now a literal `molniya`, which is a problem in its own right; see
+  *The health check and the kernel binary disagree* in 4d.**
 
   **Verified by mounting the finished image, not by trusting the log.**
   (This describes the first assembly, by hand. That image was later deleted
   for its 4096 MiB slots; the findings held on the rebuild, and every one of
   them is now an assertion in `verify-image.sh` rather than a paragraph.)
   Seven partitions matching `layout.sh` exactly; `autoboot.txt` on p1 with slot A
-  default and `[tryboot]` naming B; bootfs A holding only `kernel-molniya.img`
+  default and `[tryboot]` naming B; bootfs A holding only `kernel-kosmos.img`
   with `root=/dev/mmcblk0p5`, bootfs B the same with `root=…p6`; both roots
   carrying the right per-slot fstab, an identical `slots.conf`, the health check
-  and its helper under `/usr/local/lib/molniya/`, and modules for
-  `6.12.98-molniya+`; the data partition seeded and shared. **The cross-check
+  and its helper under `/usr/local/lib/kosmos/`, and modules for
+  `6.12.98-kosmos+`; the data partition seeded and shared. **The cross-check
   that matters holds in both slots:** boot p2 → `root=p5` → slot A, boot p3 →
   `root=p6` → slot B, which is precisely the agreement `slot-identity.sh`
   asserts at boot.
@@ -1644,17 +1769,37 @@ The invariant: **the proven card is never inserted in anything that can write
 while the test runs.** Worst case under this protocol is downtime, never data
 loss.
 
-**Artifact:** `X:\molniya-images\molniya-rpi5.img.gz`, 3.49 GB, built 2026-08-26.
+**Artifact:** `X:\molniya-images\kosmos-rpi5.img.gz`, 3.49 GB, built 2026-08-26.
 Raw digest `9fedaa86f1e35226ba60cbf8d159aa6dae096aea369b2dda377b9d219da33fa1`,
 round trip confirmed. 127/127 structural + release checks. Never booted.
+
+🔴 **This is a KosmOS image and every command below had to be un-renamed to
+match it. Read this before flashing.** The 2026-08-28 sweep rewrote this
+protocol's account name, paths and kernel version to `molniya`; the artifact it
+tells you to flash was built on 2026-08-26 and knows nothing about any of it.
+As written, **step 3 could not log in and every command in step 4 was a
+`No such file or directory`** — an evening at the hardware to discover a rename
+bug. Corrected 2026-08-29 against the image itself, read out of a read-only loop
+mount rather than reasoned about:
+
+| | in this image |
+|---|---|
+| account | `kosmos`, uid 1000, `/home/kosmos` |
+| kernel | `6.12.98-kosmos+` |
+| scripts | `/usr/local/lib/kosmos/kosmos-*.sh`, plus `slot-identity.sh` |
+| config | `/etc/kosmos/slots.conf`, `/etc/rauc/system.conf` |
+| unit | `kosmos-mark-good.service` |
+| compatible | `kosmos-rpi5` |
+
+**When the MolniyaOS rebuild lands, every one of those becomes `molniya` and
+this table is what to change back.** `/boot/selector` is name-free and stays.
 
 ⚠️ **This artifact carries no RAUC keyring** (4d, 2026-08-27). Every step below
 still stands — `rauc status` does not read the keyring — but a pass proves
 nothing about `rauc install`, which on this image fails with `failed to load CA
-file`. If the card is being flashed after the injector has run, use the new
-digest from `molniya-rpi5.img.gz.sha256`, not the one above.
+file`. The injection that would have fixed that is retired; see PICK UP HERE.
 
-1. **Flash the spare card** from `molniya-rpi5.img.gz` (Imager, "Use custom" —
+1. **Flash the spare card** from `kosmos-rpi5.img.gz` (Imager, "Use custom" —
    it reads `.img.gz` directly, which is why the artifact is gzip). Confirming
    the target device is the one irreversible step — verify it twice.
 
@@ -1667,7 +1812,7 @@ digest from `molniya-rpi5.img.gz.sha256`, not the one above.
 2. **Clean shutdown of pi-server.** Pull its card; it sits on the desk as the
    rollback state.
 
-3. **Boot the spare, and get in.** The account is **`molniya`**, not `homelab` —
+3. **Boot the spare, and get in.** The account is **`kosmos`**, not `homelab` —
    `homelab` is pi-server's own installed system, not the image. Key-only, and
    the key in `~/.ssh/id_ed25519` is already baked in.
 
@@ -1678,21 +1823,21 @@ digest from `molniya-rpi5.img.gz.sha256`, not the one above.
 
    ```
    ssh-keygen -R 192.168.1.2
-   ssh molniya@192.168.1.2
+   ssh kosmos@192.168.1.2
    ```
 
 4. **Run the acceptance checks.** The first three predate 4d; the rest are new
    on 2026-08-26 and have never run on hardware.
 
    ```
-   uname -r                                              # want 6.12.98-molniya+
-   /usr/local/lib/molniya/slot-identity.sh                # want SLOT=A, VERDICT=consistent
-   /usr/local/lib/molniya/molniya-health-check.sh; echo $?  # want exit 0
+   uname -r                                              # want 6.12.98-kosmos+
+   /usr/local/lib/kosmos/slot-identity.sh                # want SLOT=A, VERDICT=consistent
+   /usr/local/lib/kosmos/kosmos-health-check.sh; echo $?  # want exit 0
    findmnt /boot/selector -o TARGET,SOURCE,FSTYPE,OPTIONS # want ro
-   sudo /usr/local/lib/molniya/molniya-boot-backend.sh get-primary   # want A
-   sudo /usr/local/lib/molniya/molniya-boot-backend.sh get-current   # want A
+   sudo /usr/local/lib/kosmos/kosmos-boot-backend.sh get-primary   # want A
+   sudo /usr/local/lib/kosmos/kosmos-boot-backend.sh get-current   # want A
    sudo rauc status
-   systemctl status molniya-mark-good.service --no-pager -l
+   systemctl status kosmos-mark-good.service --no-pager -l
    ```
 
    **`get-primary` and `get-current` both returning `A` is the finding that
@@ -2153,6 +2298,67 @@ boot partition).
 
   Still true, and the part that matters: **none of it has BOOTED.** 127
   structural checks say the image is built correctly, not that it runs.
+
+##### 🔴 The health check and the kernel binary disagree, and the next image built would roll itself back (found 2026-08-29)
+
+**This blocks the MolniyaOS rebuild, and it is not a naming nit — it is a
+rollback loop.** Two decisions the rename made separately, each defensible:
+
+- the kernel binary **keeps** `-kosmos+` until it is rebuilt, because rebuilding
+  it invalidates the identity `BENCHMARKS.md` publishes against (stated under
+  *The Rename*);
+- `molniya-health-check.sh` asserts `uname -r` contains **`molniya`**, and does
+  so as a **CRITICAL**, deliberately — the older pattern accepted `rt` or `6.12`,
+  which a stock Pi OS kernel satisfies, so it passed whether or not our kernel
+  was running. Narrowing it was right.
+
+Nobody checked the two against each other. The next image this tree builds
+carries the *existing* `-kosmos+` package — that is the whole plan, and it is
+what `build-image.sh` now resolves to — into a rootfs whose health check greps
+for `molniya`. So:
+
+```
+check_kernel_localversion → CRITICAL FAIL ("6.12.98-kosmos+ — no '-molniya'")
+  → molniya-health-check.sh exits non-zero
+    → molniya-mark-good.sh exits 1 and does NOT call `rauc status mark-good`
+      → the slot is never committed; the next boot returns to the other one
+```
+
+Never marking good *is* the rollback — by design, and the design is correct.
+It just fires on a healthy box for a spelling reason. On a freshly flashed card
+there is no tryboot cycle to revert, so the first boot survives; what dies is
+every **update** onto it, permanently and silently, which is precisely the thing
+4d exists to provide.
+
+**The existing artifact is not affected** and this is worth being clear about:
+its health check is `kosmos-health-check.sh` and it greps `kosmos`, so the boot
+test protocol stands unchanged. The bug is in the *combination the rebuild
+creates*, not in either artifact on its own.
+
+**Three ways out, and the choice is not the checker's to make:**
+
+1. **Rebuild the kernel first**, so the binary really is `-molniya+`. Cleanest
+   result, and it is the one thing the rename explicitly declined to trigger:
+   it invalidates the pinned identity in `BENCHMARKS.md`, and the `linux` tree
+   was deleted on 2026-08-26, so it starts with a re-clone at `f5a99b95…` on a
+   box with 3.4 GB free.
+2. **Accept either string, with a stated expiry.** Two words in the grep, and
+   the cost is that the check stops distinguishing the two kernels for as long
+   as it stands — a transitional exception that will outlive the transition
+   unless something makes it expire.
+3. **Derive the expectation instead of spelling it.** The assertion's actual
+   purpose is *"this is the kernel this image was built with"*, not *"this
+   kernel is spelled molniya"* — the same reasoning that made `verify-image.sh`
+   derive every expected value and `arm_kernel` read the package rather than
+   name a file. The image already knows the answer: stage 2 writes
+   `kernel-version` and the manifest records it. This is the option that cannot
+   go stale at the next rename, and the most work: it touches the checker, the
+   mark-good chain, and `verify-image.sh`, and none of it is proven until a box
+   boots.
+
+**Not decided here — deliberately.** Option 1 is a call about published data.
+Flagged before the rebuild rather than discovered by a box that will not
+commit an update and cannot say why.
 
 ##### ⚠️ The keyring was never installed — 127 of 127 on an image that could not update (found 2026-08-27)
 
@@ -2618,7 +2824,7 @@ v0.2   ✅ DONE    SDR userspace tools installed (rtl_433, dump1090, predict)
 v0.25  ⏳ ACTIVE  RT kernel benchmark published (proof of claim — BEFORE the
                  SATCOM stack; Test 1 needs no dongle)
                  Harnesses + methodology written, thermal control added, kernel
-                 BUILT and pinned (6.12.98-molniya+, f5a99b95) 07-31, INSTALLED
+                 BUILT and pinned (6.12.98-kosmos+, f5a99b95) 07-31, INSTALLED
                  and BOOTED 08-02 — 02a verification 7/0 on real hardware.
                  TEST 1 COMPLETE: all 18 rows measured across A/B/C.
                  Headline — worst-case latency under IO load 6262 us (stock)
@@ -2649,10 +2855,21 @@ v0.8   ⏳ ACTIVE  Image builder (reproducible, distributable .img.gz) —
                  and HAS NEVER BOOTED. What remains needs a card reader and a
                  spare card, not code.
                  ⚠️ That 127/127 is against the checks that existed when it was
-                 built. The keyring gate added 08-27 fails it: the image ships
-                 no /etc/rauc/molniya.cert.pem, so rauc refuses every bundle.
-                 inject-keyring.sh fixes the artifact; provision-rauc.sh fixes
-                 every future build. See 4a PICK UP HERE.
+                 built, and it now fails two of them. The keyring gate added
+                 08-27: the image ships no cert, so rauc refuses every bundle.
+                 And the 08-28 rename: it is a KosmOS image, compatible=
+                 kosmos-rpi5, so no bundle this tree builds installs on it
+                 whatever keyring it carries. Injection is therefore retired;
+                 the rebuild carries the cert and the name in one pass.
+                 It is still the right card for the boot test — that protocol
+                 exercises rauc status, not install.
+                 🔴 The rebuild is BLOCKED, and not on code (08-29): the
+                 health check demands -molniya in uname -r as a CRITICAL while
+                 the kernel binary is still -kosmos+, so the image it produces
+                 never marks itself good. Needs a decision — see 4d.
+                 Also blocked on 1.5 GB of disk pi-server does not have.
+                 ✅ build-image.sh no longer defaults to a kernel package that
+                 does not exist (the rename broke that path). See 4a.
 v0.9   ⏳ ACTIVE  Atomic A/B updates (RAUC + tryboot), health-check gate,
                  offline USB bundle install, automatic rollback
                  BUILT: partition layout (three FAT partitions, p1 the selector
@@ -2822,12 +3039,19 @@ of the repo on the Pi.
       must stay a single line.
 
       ✅ **Corrected 2026-08-23: a tarball *does* survive on pi-server** —
-      `~/molniya/molniya-kernel-6.12.98-molniya+.tar.gz`, 32 MB, dated 2026-07-31,
-      alongside the staged `molniya-kernel-pkg/` and the 3.1 GB `linux` build
-      tree at the pinned commit `f5a99b95…`. The claim above was written when
-      nobody had looked. Finding it is what let 4a stages 2 and 3 produce a real
-      MolniyaOS image rather than a base-plus-bench-tools one, so the correction is
-      worth more than the disk it occupies.
+      32 MB, dated 2026-07-31, alongside its staged `*-kernel-pkg/`. The claim
+      above was written when nobody had looked. Finding it is what let 4a stages
+      2 and 3 produce a real MolniyaOS image rather than a base-plus-bench-tools
+      one, so the correction is worth more than the disk it occupies.
+
+      ⚠️ **Two details of that note were wrong by 2026-08-29, and both were
+      re-checked on the box rather than re-read here.** The `linux` build tree
+      it lists as surviving is *gone* — it was deleted on 2026-08-26 to find the
+      1.5 GB the rebuild was short (recorded under 4d's disk table), so `git
+      clone` at `f5a99b95…` is the only route back. And the path it gives is
+      `~/molniya/molniya-kernel-6.12.98-molniya+.tar.gz`, which names nothing:
+      the real file is `~/kosmos/kosmos-kernel-6.12.98-kosmos+.tar.gz`. See
+      *The rename broke one path that pointed at real bytes* below.
    3. **A — already banked**, so no third boot. To redo it: comment the two
       directives in the MolniyaOS block of `config.txt` and reboot.
 
@@ -3018,7 +3242,7 @@ of the repo on the Pi.
 12. First NOAA APT capture using SatDump
 13. ~~**A/B pre-checks (no purchase, no reboot required)** — on pi-server~~
     ✅ **both run 2026-08-23**, against the running MolniyaOS kernel
-    (`6.12.98-molniya+`, `#1 SMP PREEMPT_RT Fri Jul 31 02:36:12 BST 2026`).
+    (`6.12.98-kosmos+`, `#1 SMP PREEMPT_RT Fri Jul 31 02:36:12 BST 2026`).
     Full findings in 4d; the short version is that **the mechanism is available
     and the pin protecting it was broken.**
 

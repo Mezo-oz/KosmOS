@@ -57,8 +57,11 @@ the total to whichever one is being argued for.
 
 Switching A ↔ B/C: comment or uncomment the two directives in the MolniyaOS block of
 `/boot/firmware/config.txt`. Switching B ↔ C: change `NOHZ_FULL_CPUS` in
-`kernel/install-kernel.sh` and re-run it, or edit `molniya/cmdline.txt` on the boot
-partition directly.
+`kernel/install-kernel.sh` and re-run it, or edit `kosmos/cmdline.txt` on the boot
+partition directly — the `os_prefix` directory on the installed box is still
+`/boot/firmware/kosmos/`, and renaming it means editing `config.txt` in the same
+breath or the box does not boot. It becomes `molniya/` at the next kernel
+install, which rewrites both anyway.
 
 ### Bench box
 
@@ -85,13 +88,23 @@ reproducible, this table makes it citable.
 
 | | Config A (stock) | Configs B and C (MolniyaOS) |
 |---|---|---|
-| `uname -r` | `6.12.62+rpt-rpi-2712` | `6.12.98-molniya+` |
+| `uname -r` | `6.12.62+rpt-rpi-2712` | `6.12.98-kosmos+` |
 | `uname -v` | `#1 SMP PREEMPT Debian 1:6.12.62-1+rpt1` | `#1 SMP PREEMPT_RT Fri Jul 31 02:36:12 BST 2026` |
 | Source | Pi OS archive | `raspberrypi/linux`, branch `rpi-6.12.y` |
 | Commit | n/a — distribution package | **`f5a99b95354d38db209003a7d00560e5091ba94a`** |
 | `KERNEL_COMMIT` set in `01-build-kernel.sh` | n/a | ☑ yes — pinned *before* the build |
 | Config fragment | n/a | `kernel/sdr-rt.config` |
 | Built | n/a | 2026-07-31 on pi-server |
+
+⚠️ **`6.12.98-kosmos+` is not a typo, and it must not be "corrected".** The
+project was renamed KosmOS → MolniyaOS on 2026-08-28; this kernel was built on
+2026-07-31 and its `CONFIG_LOCALVERSION` is baked into the binary that produced
+every number below. The rename briefly rewrote this cell to `-molniya+`, which
+named a kernel that has never existed — restored 2026-08-29 after reading
+`uname -r` off the running box. The tree now builds `-molniya`; this table
+describes what was measured, and it changes only when the kernel is rebuilt and
+the benchmark re-run. `uname -v` and the commit hash are the cross-check: they
+still match the running kernel byte for byte.
 
 The pin was set before building rather than captured afterwards, so the tree that
 compiled is provably the tree named here: `kernel-commit` inside the package
