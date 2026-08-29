@@ -41,7 +41,7 @@ set -euo pipefail
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CACHE="${MOLNIYA_BUILD_CACHE:-/var/tmp/molniya-build}"
 IMG="$CACHE/molniya-rpi5.img"
-KERNEL_TARBALL="${MOLNIYA_KERNEL_TARBALL:-$HOME/molniya/molniya-kernel-6.12.98-molniya+.tar.gz}"
+KERNEL_TARBALL="${MOLNIYA_KERNEL_TARBALL:-}"   # empty -> resolved before stage 1
 AUTHORIZED_KEYS="${MOLNIYA_AUTHORIZED_KEYS:-$CACHE/authorized_keys}"
 
 MOUNTED=()
@@ -69,6 +69,41 @@ manifest_kernel() {
     local m="$1"
     [ -f "$m" ] || return 1
     awk '$1 == "kernel" { print $2 }' "$m"
+}
+
+# The kernel package is a build product with a version in its name, so a
+# hardcoded default here goes stale for two independent reasons -- and both have
+# already happened. The version moves on every kernel rebuild; and the 2026-08-28
+# rename rewrote this path to a file that does not exist, because the tarball on
+# disk is still kosmos-named. That is not an oversight to correct by renaming the
+# file: the kernel BINARY inside it is 6.12.98-kosmos+, and a molniya-named
+# package carrying a kosmos kernel is a name disagreeing with its bytes.
+#
+# So the directory is named and the file is discovered. EXACTLY ONE match is
+# required. Picking the newest of several would silently build an image against a
+# kernel nobody chose, and the mismatch would not surface until the box booted a
+# kernel whose modules it does not have.
+resolve_kernel_tarball() {
+    if [ -n "$KERNEL_TARBALL" ]; then
+        [ -f "$KERNEL_TARBALL" ] || die "no kernel tarball at $KERNEL_TARBALL"
+        return 0
+    fi
+
+    local dir="${MOLNIYA_KERNEL_DIR:-$HOME/molniya}"
+    local found=()
+    [ -d "$dir" ] || die "no kernel package directory at $dir"
+
+    while IFS= read -r f; do
+        found+=("$f")
+    done < <(find "$dir" -maxdepth 1 -type f -name '*-kernel-*.tar.gz' | sort)
+
+    case "${#found[@]}" in
+        1) KERNEL_TARBALL="${found[0]}"
+           note "kernel package: $KERNEL_TARBALL" ;;
+        0) die "no *-kernel-*.tar.gz in $dir (set MOLNIYA_KERNEL_TARBALL)" ;;
+        *) printf '  %s\n' "${found[@]}" >&2
+           die "${#found[@]} kernel packages in $dir — set MOLNIYA_KERNEL_TARBALL" ;;
+    esac
 }
 
 # ----------------------------------------------------------------------------
@@ -274,6 +309,12 @@ main() {
        [ -f "$IMG" ] && [ -f "$IMG.manifest" ]; then
         note "image present — verifying and streaming it, no build stages"
     else
+        # Resolved once, here, rather than inside the two stages that consume it.
+        # stage_rootfs guarded it and stage_assemble did not, so on a resume --
+        # rootfs cached, image not, which is the common case -- a bad path got
+        # past the guard and died inside assemble-image.sh after the loop device
+        # and the mounts were already up.
+        resolve_kernel_tarball
         stage_fetch
         stage_rootfs
         slim_rootfs
