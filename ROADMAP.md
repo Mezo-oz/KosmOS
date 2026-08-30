@@ -2521,6 +2521,23 @@ of its instances does not generalise itself.
    fingerprint pinning), so a passing release image should now report **135**
    where it reported 127.
 
+   ⚠️ **135 is stale as of 2026-08-29 — expect 139 (141 with fingerprint
+   pinning).** The kernel-version gate added that day is two more checks per
+   slot, and `verify_rauc` runs for A and B, so it is +4. The
+   `verify-image.sh` side of the same change is net zero: two literal kernel
+   assertions went out, two derived ones came in, per bootfs.
+
+   ⚠️ **And treat every number in this paragraph as arithmetic, not as a
+   measurement.** 127 was counted by a real run; 135 and 139 were counted by
+   reading diffs, and the keyring block alone has two conditional verdicts
+   (fingerprint pinning, and an early return when the cert is absent) that make
+   the total depend on the operator's environment. **The first release run after
+   the rebuild is what settles it — write down what it prints and retire the
+   derived figures.** A runbook that states an expected count it has never seen
+   is the same habit `verify-image.sh` was written to avoid: a check carrying
+   its own copy of the answer. If the run reports a number in this range and
+   zero failures, the count is not the finding — a FAIL is.
+
 ##### ⚠️ `local a=1 b=$a` does not work, and it bit twice the same day
 
 `local` creates **every** name it declares as an unset local *before* assigning
