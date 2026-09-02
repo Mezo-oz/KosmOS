@@ -158,6 +158,30 @@ should be `share/molniya`. Every other renamed path — `/etc/molniya`,
 `/usr/local/lib/molniya` — is written at assemble time, not into the cache. One
 directory move inside the rootfs, not a rebuild.
 
+⚠️ **And the fix itself turned the shellcheck gate red (found and closed
+2026-09-01).** `733d00f` added the tarball resolver with a `local found=()` — an
+array. 97 lines further down, `scan_orphans` already had a `local found=""` — a
+string. Both are `local`, so the *runtime* behaviour was never wrong and no test
+could have caught it; but shellcheck infers types per name across a whole file,
+so one name with two types produced SC2178, SC2179 and SC2128, and
+`build-image.sh` has been failing CI ever since.
+
+**Fixed by renaming the string to `orphans`, not by adding a disable comment.**
+The rule against suppressing a check exists for cases where the check is right;
+this one is a false positive, and the tempting move is to silence it. That would
+have left the actual defect in place, which is that a reader meets `found` twice
+in one file meaning two different things. The rename removes the ambiguity for
+the human and the tool at once — and the tool was only ever complaining about
+something genuinely confusing.
+
+**Worth noting how it was found:** not by reading the code, but by running the
+tree's own verification command. The Windows workstation is documented as having
+no shellcheck, so the standing instruction is to rely on CI and say so. There is
+in fact a Linux `shellcheck` binary sitting in `~/shellcheck`, unrunnable on
+Windows but perfectly runnable through WSL against `/mnt/x` — so local linting
+was available the whole time. The standing instruction to rely on CI and say
+so is therefore out of date, and this is where that is written down.
+
 ### ⚠️ The sweep also rewrote records of things that happened (restored 2026-08-29)
 
 The broken path above is one symptom; the class is larger. `grep -ri kosmos`

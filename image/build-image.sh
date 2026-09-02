@@ -187,18 +187,18 @@ slim_rootfs() {
 # must not touch the image at all, and that can only be known by looking first.
 scan_orphans() {
     local img="$1" keep="$2"
-    local part dir found=""
+    local part dir orphans=""
     LOOPDEV="$(sudo losetup -r -P -f --show "$img")" || die "losetup failed"
     for part in 5 6; do
         dir="$CACHE/mnt-slim/p$part"
         mkdir -p "$dir"
         sudo mount -o ro "${LOOPDEV}p${part}" "$dir" || die "mount p$part failed"
         MOUNTED+=("$dir")
-        found+="$(sudo find "$dir/lib/modules" -mindepth 1 -maxdepth 1 \
+        orphans+="$(sudo find "$dir/lib/modules" -mindepth 1 -maxdepth 1 \
             -type d -not -name "$keep" -printf 'x' 2>/dev/null || true)"
     done
     teardown
-    [ -n "$found" ]
+    [ -n "$orphans" ]
 }
 
 # Slimming an image that is ALREADY assembled, which is the case whenever the
