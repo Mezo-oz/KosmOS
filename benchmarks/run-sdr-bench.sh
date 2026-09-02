@@ -26,14 +26,19 @@
 # same reason as Test 1 — ondemand ramp latency would otherwise be folded into
 # whichever kernel happened to be measured cold.
 #
-# NOT YET RUN: no dongle on hand at the time of writing, so this harness has been
-# linted and reviewed but never executed against hardware. The rtl_test output
-# parsing in particular is written against its documented output format and
-# should be checked on the first real run — use --quick first.
+# NOT YET RUN: this harness has been linted and reviewed but never executed
+# against hardware. The rtl_test output parsing in particular is written against
+# its documented output format and should be checked on the first real run.
+# Smoke-test with --quick AND a scratch directory, never the real results dir:
+#   MOLNIYA_BENCH_OUT=/tmp/sdr-smoke ./run-sdr-bench.sh --quick
+# Raw files overwrite while sdr-summary.tsv appends, so a --quick pass into the
+# real directory destroys the raw evidence for 2.4 MS/s and leaves rows that
+# outlive it. The `seconds` column is what tells a 30 s row from a 600 s one.
 #
-# SHARED CODE: the governor, config-detection and load-generation blocks below are
-# duplicated in run-latency-bench.sh. Deliberately not extracted — see the
-# extraction rule in ROADMAP.md for the trigger and the shape it must take.
+# SHARED CODE: governor control, config detection and thermal state are executable
+# helpers, called as subprocesses and never sourced — the shape the extraction rule
+# in ROADMAP.md settled on when thermal gating tripped the 400-line trigger in
+# run-latency-bench.sh. This file held the last inline copies; it no longer does.
 # ============================================================================
 
 set -euo pipefail
@@ -51,6 +56,20 @@ RATES=(1024000 2048000 2400000 3200000)
 # afternoon; that is the point — sample loss is bursty and a 30-second run tells
 # you almost nothing.
 DURATION=600
+
+# Thermal gate. It matters more for Test 2 than for Test 1, not less: the sweep
+# runs `stress-ng --cpu 4 --io 2` for ten minutes per rate — the load that took a
+# stock Pi 5 to its soft limit with the fan already at 4/4, and every cpu-load row
+# in Test 1 throttled. A throttle drops the clock, which is exactly what makes the
+# USB path miss its service deadlines, so here it inflates the published number.
+#
+# The sharper reason is the sweep's own shape: RATES ascends, and ungated so does
+# accumulated heat, so the highest rate is always measured hottest. "Loss rises
+# with rate" is both the headline result and what thermal drift alone would
+# produce. Starting every run from one temperature is what separates them.
+THERMAL_TARGET_C=65
+THERMAL_WAIT_S=600
+THERMAL="$SELF_DIR/thermal-state.sh"
 
 OUT_DIR="${MOLNIYA_BENCH_OUT:-$SELF_DIR/results}"
 
@@ -132,37 +151,10 @@ if ! sudo -v; then
     exit 1
 fi
 
-# --- Configuration detection (identical to run-latency-bench.sh) ------------
-
-detect_config() {
-    local rt=0 nohz=0
-
-    # Process substitution, not a pipe into grep -q: under pipefail, zcat dies
-    # of SIGPIPE when grep -q exits early and the pipeline reports failure even
-    # though it matched, so this branch never ran. See detect-config.sh for the
-    # full note; fixed 2026-08-23.
-    if [ -f /proc/config.gz ] &&
-        grep -qx "CONFIG_PREEMPT_RT=y" <(zcat /proc/config.gz 2>/dev/null); then
-        rt=1
-    elif uname -v | grep -q "PREEMPT_RT"; then
-        rt=1
-    fi
-
-    if grep -q "nohz_full=" /proc/cmdline; then
-        nohz=1
-    fi
-
-    if [ "$rt" -eq 0 ]; then
-        echo "A"
-    elif [ "$nohz" -eq 0 ]; then
-        echo "B"
-    else
-        echo "C"
-    fi
-}
+# --- Configuration detection ------------------------------------------------
 
 if [ -z "$CONFIG" ]; then
-    CONFIG=$(detect_config)
+    CONFIG=$("$SELF_DIR/detect-config.sh")
     DETECTED="auto-detected"
 else
     DETECTED="forced by --config"
@@ -178,25 +170,21 @@ esac
 
 # --- Governor ---------------------------------------------------------------
 
-GOV_PATHS=(/sys/devices/system/cpu/cpu*/cpufreq/scaling_governor)
 ORIGINAL_GOV=""
 
-read_governor() {
-    cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || echo unknown
-}
-
-set_governor() {
-    local want="$1" p
-    for p in "${GOV_PATHS[@]}"; do
-        [ -e "$p" ] || continue
-        echo "$want" | sudo tee "$p" > /dev/null 2>&1 || true
-    done
-}
+# The thermal sampler is an unbounded `while true` by design — it runs until
+# killed. If this script dies mid-run the trap is the only thing that stops it,
+# so the PID is global rather than local to run_one.
+THERM_PID=""
 
 restore_state() {
     stop_load
+    if [ -n "$THERM_PID" ]; then
+        kill "$THERM_PID" 2>/dev/null || true
+        THERM_PID=""
+    fi
     if [ -n "$ORIGINAL_GOV" ] && [ "$ORIGINAL_GOV" != "unknown" ]; then
-        set_governor "$ORIGINAL_GOV"
+        "$SELF_DIR/governor.sh" set "$ORIGINAL_GOV" > /dev/null || true
     fi
 }
 
@@ -263,12 +251,24 @@ run_one() {
     echo ""
     echo "  --- ${rate} S/s, ${load}, ${DURATION}s ---"
 
-    set_governor performance
+    "$SELF_DIR/governor.sh" set performance > /dev/null || true
     local gov
-    gov=$(read_governor)
+    gov=$("$SELF_DIR/governor.sh" read)
     if [ "$gov" != "performance" ]; then
         echo "      WARNING: governor is '$gov', not performance."
     fi
+
+    # Cool to a common starting point, then record what we actually got. The
+    # gate is bounded, so a warm room yields a hot start that is written down
+    # rather than a suite that hangs waiting for a temperature it cannot reach.
+    echo "      $("$THERMAL" wait "$THERMAL_TARGET_C" "$THERMAL_WAIT_S" | tail -2 | head -1)"
+    local therm_before thr_before
+    therm_before=$("$THERMAL" read)
+    thr_before=${therm_before#*throttled=}; thr_before=${thr_before%% *}
+    echo "      before: $therm_before"
+
+    "$THERMAL" watch "$raw.thermal" &
+    THERM_PID=$!
 
     start_load "$load"
 
@@ -279,6 +279,7 @@ run_one() {
         echo "# load:       $load"
         echo "# duration:   ${DURATION}s"
         echo "# governor:   $gov"
+        echo "# thermal before: $therm_before"
         echo "# kernel:     $(uname -r)"
         echo "# cmdline:    $(cat /proc/cmdline)"
         echo "# date:       $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
@@ -293,13 +294,38 @@ run_one() {
 
     stop_load
 
+    kill "$THERM_PID" 2>/dev/null || true
+    THERM_PID=""
+    local therm_after thr_hex thermal_ok peak temp_after
+    peak=$("$THERMAL" peak "$raw.thermal")
+    echo "# thermal peak:   $peak" >> "$raw"
+    therm_after=$("$THERMAL" read)
+    thr_hex=${therm_after#*throttled=}; thr_hex=${thr_hex%% *}
+    echo "# thermal after:  $therm_after" >> "$raw"
+
+    # Trimmed to the bare number: this lands in a TSV column that gets
+    # transcribed into a table, and the untrimmed line carries the mask too.
+    temp_after=${therm_after#*temp_c=}; temp_after=${temp_after%% *}
+
+    # Flagged, not discarded — the reader decides. A throttled row is not
+    # comparable: the clock was not constant, which is what pinning removes.
+    if "$THERMAL" occurred "$thr_before" "$thr_hex" || [ "${peak#*any_throttle=}" = "yes" ]; then
+        thermal_ok=THROTTLED
+        echo "      *** THROTTLED during this run — $therm_after"
+        echo "      *** treat this row as contaminated, not comparable"
+    else
+        thermal_ok=clean
+    fi
+    echo "      peak:   $peak"
+
     local bytes samples
     bytes=$(sum_lost_bytes "$raw")
     samples=$(( bytes / 2 ))
 
     printf '      lost %s bytes = %s samples\n' "$bytes" "$samples"
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
         "$CONFIG" "$rate" "$load" "$DURATION" "$bytes" "$samples" "$gov" \
+        "$temp_after" "$thermal_ok" \
         >> "$OUT_DIR/sdr-summary.tsv"
 }
 
@@ -311,7 +337,11 @@ ORIGINAL_GOV=$(read_governor)
 trap restore_state EXIT
 
 RUN_COUNT=$(( ${#RATES[@]} * 2 ))
+
+# Two figures, because cool-down dominates the spread. The floor assumes every
+# run starts already cool; the ceiling assumes every gate runs to its bound.
 EST_MIN=$(( (RUN_COUNT * (DURATION + 10)) / 60 + 1 ))
+EST_MAX=$(( (RUN_COUNT * (DURATION + 10 + THERMAL_WAIT_S)) / 60 + 1 ))
 
 echo "============================================"
 echo "  MolniyaOS SDR Sample-Loss Benchmark — Test 2"
@@ -323,7 +353,8 @@ echo "  governor now:   $ORIGINAL_GOV (will be set to performance, then restored
 echo "  rates:          ${RATES[*]}"
 echo "  per run:        ${DURATION}s"
 echo "  runs:           $RUN_COUNT (${#RATES[@]} rates x idle/load)"
-echo "  estimated:      ~${EST_MIN} minutes"
+echo "  estimated:      ${EST_MIN}-${EST_MAX} minutes, incl. cool-down"
+echo "  thermal gate:   start each run at <= ${THERMAL_TARGET_C} C (max ${THERMAL_WAIT_S}s wait)"
 echo "  output:         $OUT_DIR"
 if [ "$QUICK" -eq 1 ]; then
     echo ""
@@ -346,7 +377,7 @@ case "${GO,,}" in
 esac
 
 if [ ! -f "$OUT_DIR/sdr-summary.tsv" ]; then
-    printf 'config\trate\tload\tseconds\tlost_bytes\tlost_samples\tgovernor\n' \
+    printf 'config\trate\tload\tseconds\tlost_bytes\tlost_samples\tgovernor\tthermal_c\tverdict\n' \
         > "$OUT_DIR/sdr-summary.tsv"
 fi
 

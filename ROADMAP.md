@@ -473,7 +473,7 @@ Known duplication, all deliberate:
 
 | Duplicated | Copies in | Size |
 |---|---|---|
-| governor handling, config detection, load generation | ~~`run-latency-bench.sh`~~, `run-sdr-bench.sh` | ~80 lines |
+| ~~governor handling, config detection, load generation~~ — **fully retired 2026-09-01**, when Test 2 took the helpers too | ~~`run-latency-bench.sh`~~, ~~`run-sdr-bench.sh`~~ | ~~80 lines~~ |
 | `clone_pinned` | `02c-sdr-userspace.sh`, `03b-satdump.sh`, `03c-sdrpp.sh` | ~40 lines |
 
 ### ✅ The rule fired, 2026-07-30 — and it worked as written
@@ -835,6 +835,13 @@ boots — that is what `os_prefix` bought.
 - Repeat idle and under `stress-ng` load (simulates a decode job running
   during a live capture — the realistic worst case)
 - Metric: lost samples per 10-minute run, per rate, per kernel
+- **Thermally gated, added 2026-09-01.** Every run starts at ≤65 °C and is
+  flagged if the SoC throttled during it — the same treatment Test 1 gets, for a
+  sharper reason. `RATES` ascends, so left ungated the highest rate is always
+  measured hottest, and "loss rises with rate" is both the headline result and
+  what thermal drift alone would produce. The gate is what makes the sweep mean
+  anything. It also stops the suite from being a single unattended block: budget
+  cool-down between runs, as with Test 1.
 
 **Test 3 — Real-world decode quality (needs dongle + antenna):**
 - Live NOAA APT captures via SatDump with background load running
