@@ -533,23 +533,33 @@ detection returns the configuration letter on stdout:
 CONFIG=$(./bench-detect-config.sh)      # prints A, B or C; non-zero if unsure
 ```
 
-**Current headroom** (re-measured 2026-08-27, after the rename and 4d's bundle
-work): `assemble-image.sh` **400**, `layout.sh` **399**,
-`molniya-health-check.sh` **398**, `tle-updater.sh` **397**,
-`run-latency-bench.sh` **396**, `build-rootfs.sh` **396**,
-`verify-image.sh` **395**, `molniya-boot-backend.sh` 386,
-`install-kernel.sh` 383, `rtl-power-heatmap.py` **377**, `run-sdr-bench.sh` 367,
-`02c-sdr-userspace.sh` 352, `01-build-kernel.sh` 329, `build-image.sh` 288,
+**Current headroom** (re-measured 2026-09-01, after Test 2's thermal gating):
+`assemble-image.sh` **400**, `verify-image.sh` **399**, `layout.sh` **399**,
+`molniya-health-check.sh` **399**, `build-rootfs.sh` **399**,
+`run-sdr-bench.sh` **398**, `tle-updater.sh` **397**,
+`run-latency-bench.sh` **396**, `molniya-boot-backend.sh` 386,
+`install-kernel.sh` 383, `rtl-power-heatmap.py` **377**,
+`02c-sdr-userspace.sh` 352, `01-build-kernel.sh` 329, `build-image.sh` 329,
 `build-bundle.sh` 266, `install-tle-timer.sh` 249, `10-molniya.sh` 242,
 `make-keys.sh` 238, `03a-gnuradio-stack.sh` 227, `inject-keyring.sh` 220,
 `thermal-state.sh` 207, `03b-satdump.sh` 206, `03c-sdrpp.sh` 203,
-`02a-verify-kernel.sh` 198, `verify-rauc.sh` 189, `fetch-base.sh` 172,
+`verify-rauc.sh` 199, `02a-verify-kernel.sh` 198, `fetch-base.sh` 194,
 `slot-identity.sh` 157.
 
-⚠️ **Seven files now have under ten lines of room, and `assemble-image.sh` is
+⚠️ **Eight files now have ten lines of room or fewer, and `assemble-image.sh` is
 AT the cap at exactly 400.** The rename moved several counts by a line or two in
 each direction — the new name is two characters longer than the old one, and
 reflowed comments do not come out even.
+
+⚠️ **Six of these figures were stale when re-measured 2026-09-01, and this table
+is the one place that is supposed to be right.** `build-image.sh` was the worst:
+288 recorded against 329 actual, because the rename fixes (`733d00f`,
+`59362c5`) grew it by 41 lines and the table did not follow them.
+`verify-image.sh`, `build-rootfs.sh`, `molniya-health-check.sh`,
+`verify-rauc.sh` and `fetch-base.sh` had each drifted by 1–22 lines. A lagging
+headroom table is worse than no table, because it is read at exactly the moment
+someone asks whether a file can absorb an addition — and for `build-image.sh` it
+promised 112 spare lines against a real 71.
 
 ⚠️ **The cap was breached, and CI caught it rather than anyone reading the
 number.** `verify-image.sh` sat at exactly 400 when 4d's keyring checks went in,
@@ -3221,14 +3231,21 @@ of the repo on the Pi.
    the running kernel byte for byte. No `(fill after first boot)` marker survives
    anywhere in the tree.
 
-   ⚠️ **`--quick` rows are indistinguishable from real ones.**
-   `run-latency-bench.sh` appends to `results/summary.tsv` with no loop-count or
-   quick-mode column, so a 100k-loop smoke run leaves six rows that look
-   publishable. Always smoke-test with `MOLNIYA_BENCH_OUT=/tmp/bench-smoke`.
+   ✅ **Both `summary.tsv` integrity defects are fixed — read out of the code
+   2026-09-01 rather than assumed.** The header writes ten names against ten
+   fields, and a `loops` column carries the loop count, so a `--quick` smoke run
+   no longer looks identical to a publishable row. The entries that stood here
+   said "fix before transcribing"; they had already been fixed, and this file
+   had not caught up. Test 2's summary got the same treatment the same day —
+   `thermal_c` and `verdict` columns, with `seconds` playing the part `loops`
+   plays for Test 1.
 
-   ⚠️ **`summary.tsv` header is two columns short** — 7 headers written against 9
-   data fields, so the temperature and throttle-status columns land unlabelled in
-   the file the published tables get transcribed from. Fix before transcribing.
+   ⚠️ **The hazard underneath them is not fixed, because it cannot be.** Raw
+   files overwrite while the summary appends, so a repeated pass still leaves
+   rows whose raw evidence has been destroyed. The new columns tell you it
+   happened; they do not stop it. Smoke-test into a scratch directory —
+   `MOLNIYA_BENCH_OUT=/tmp/bench-smoke` for Test 1, `/tmp/sdr-smoke` for Test 2
+   — and check the row count before transcribing.
 
    **Budget it as a half-day, not an evening.** ~35 min per configuration is the
    harness's own figure, so ~105 min of runtime, plus two reboots and thermal
@@ -3380,7 +3397,11 @@ of the repo on the Pi.
      `libssl-dev`, `libncurses-dev`, `libelf-dev`, `dwarves`). Not a blocker —
      `01-build-kernel.sh` installs them in its step 1 — but the build starts with
      an apt run rather than compiling immediately.
-10. Order the RTL-SDR Blog v4 + dipole antenna kit (if not already)
+10. ~~Order the RTL-SDR Blog v4 + dipole antenna kit~~ ✅ **arrived 2026-09-01.**
+    Tests 2 and 3 and step 12 are no longer hardware-blocked. Nothing has been
+    plugged in yet, and the first thing it should meet is `rtl_test -t`: `02c`'s
+    DVB-T blacklist only takes effect after a reboot or a replug, and a dongle
+    claimed by `dvb_usb_rtl28xxu` reports zero lost samples all day long.
 11. ~~Build `03-satcom-stack.sh` — pinned from line one~~ ✅ **written and
     linted**, pinned from line one. Still needs its first run on pi-server;
     nothing in it has been executed.
