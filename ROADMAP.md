@@ -2254,8 +2254,8 @@ boot partition).
   | p2 | FAT32 primary | bootfs A — kernel, DTBs, overlays, `cmdline.txt`, `config.txt` | 512 MB |
   | p3 | FAT32 primary | bootfs B — same contents, other slot | 512 MB |
   | p4 | extended | container for the logicals below | — |
-  | p5 | ext4 logical | root A — replaced wholesale on every update | 4 GB |
-  | p6 | ext4 logical | root B — same | 4 GB |
+  | p5 | ext4 logical | root A — replaced wholesale on every update | 6 GiB |
+  | p6 | ext4 logical | root B — same | 6 GiB |
   | p7 | ext4 logical | **data (persistent)** — everything that must survive an update | remainder |
 
   **Three FAT partitions, not two, and the reason is structural.** The firmware
@@ -2274,10 +2274,23 @@ boot partition).
   never names them — only `cmdline.txt` does — so nothing is given up.
 
   **Minimum card size falls out of this table** and is computed, not typed:
-  `image/layout.sh summary` reports 9248 MiB consumed before the data partition
-  gets anything, 9760 MiB with a token 512 MiB of it. 16 GB is the floor, 32 GB
-  the number for the release notes. The script is authoritative; if this
-  paragraph and `layout.sh min-bytes` ever disagree, the script is right.
+  `image/layout.sh summary` reports 13344 MiB consumed before the data partition
+  gets anything, 13856 MiB with a token 512 MiB of it — `min-bytes` returns
+  14529069056. A 16 GB card fits but leaves only ~1.4 GiB for captures, so 16 GB
+  is the floor and 32 GB is the number for the release notes. The script is
+  authoritative; if this paragraph and `layout.sh min-bytes` ever disagree, the
+  script is right.
+
+  ✅ **Corrected 2026-09-03, and the correction is the argument for the sentence
+  above it.** The slot sizes in the table and the two figures in this paragraph
+  were both taken while `SIZE_ROOT_MIB` was 4096. `60a602b` (2026-08-23) raised
+  it to 6144 after the first full SATCOM rootfs measured 5054 MiB and overran a
+  4 GiB slot by 958 MiB. The script's numbers moved; the prose did not. So for
+  eleven days this document named a 9248 MiB minimum against a real 13344 — and
+  named it in the one paragraph that declares the script authoritative in a
+  disagreement, which is the only reason the drift was recoverable rather than
+  ambiguous. Same class as the headroom-table drift, same cause: the
+  authoritative source was right the whole time and nobody re-read it.
 
   Every A/B swap replaces the root wholesale. Anything left on root is silently
   wiped on update — silently, which is the dangerous part. MolniyaOS state that must
