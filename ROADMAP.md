@@ -2985,6 +2985,191 @@ missing.
 Use `systemctl reboot`, or `reboot '0 tryboot'` explicitly. Any script or health
 check that reboots must use the right one or the A/B mechanism silently no-ops.
 
+##### ⏳ Standby-slot integrity — the slot you don't run is the slot you don't know
+
+*Adopted 2026-09-02. None of this is built. The four mechanisms below are listed
+cheapest first, and that is also the order to build them in.*
+
+**The standard this is written to, since it is not the obvious one.** The goal is
+not "cannot fail". A ~5 GB Debian root is not a pacemaker and never will be —
+that class of reliability is bought by having a few thousand lines of verified
+code and *no field updates at all*, which is the opposite of the trade this
+project has already made. The achievable goal is **no silent unknowns**: every
+component the recovery path depends on is exercised on a schedule, so a fault is
+discovered on a Tuesday rather than at the moment it is needed.
+
+**The hole in naive A/B.** While A runs, nothing reads B. A torn write from an
+update three months ago, a bad block, or a filesystem left dirty by a power cut
+sits in the standby slot unread and undetected — and is discovered at the one
+moment the system has no other option. The rollback target is the only component
+in this design that is never exercised, which makes it the only one whose health
+is a guess.
+
+This is not a new class of problem. It is why RAID arrays fail during rebuild
+rather than during normal operation, and why a backup that has never been
+restored is not a backup. The remedy is the one storage arrays settled on decades
+ago: **scrub the redundant copy on a schedule**, so latent faults surface while
+the good copy is still good.
+
+The four mechanisms are independent — each is worth building alone.
+
+**1. Verify-after-write, before the tryboot is ever attempted.** After the update
+writes the inactive slot, read the block device back and hash it, comparing
+against the digest carried in the bundle. This catches the largest single share
+of real-world corruption — the write itself — at the safest possible moment, with
+the old slot still committed and healthy. A mismatch means the update is
+abandoned, not attempted: no reboot, no tryboot, nothing changed.
+
+⚠️ **Verify before building.** RAUC validates the *bundle* — signature, and
+per-slot hashes of the source. It is **not established here** that it reads the
+*destination device* back after writing, and those are different guarantees: only
+the second catches a device that accepts a write and stores something else. Read
+the RAUC slot-verification documentation for the `raw`/`ext4` slot types before
+writing a line of this. If RAUC already does it, this item is a config change and
+nothing more.
+
+**2. `molniya-scrub` — periodic verification of the standby.** A systemd timer
+reads the inactive slot as a raw block device and re-hashes it.
+
+This is where the **one-rootfs invariant pays off in a way it was not designed
+for**: because the builder produces the root filesystem deterministically, a
+whole-slot digest is a stable, meaningful number that is known in advance.
+Without that invariant there would be nothing to compare against.
+
+Two details that are not optional:
+
+- **Hash a length, not a partition.** The written image is smaller than the slot
+  and always will be — `layout.sh` gives each root 6144 MiB against a measured
+  rootfs of 5054 MiB, so roughly 1090 MiB of every slot is whatever was there
+  before. Record `(digest, length)` at install time and hash exactly `length`
+  bytes. Hashing the whole partition produces a number that is stable only by
+  accident.
+- **Scrub immediately after commit, then on the timer.** The moment a new slot is
+  committed, the *other* slot becomes the untested one. Verifying it right then
+  closes the window before it opens.
+
+Runtime is a real cost and should be measured, not assumed: ~5 GB at SD-card read
+speed is on the order of a minute or two, negligible on NVMe. Weekly, `Nice=19`,
+`IOSchedulingClass=idle`.
+
+**Per house rule, the scrubber reports and does not act.** Its exit code is a
+verdict, exactly as the health check's is; deciding to re-provision is a separate
+program's job. That separation is what made the health check testable before 4a
+existed, and the reasoning applies here unchanged.
+
+**3. The invariant that makes 1 and 2 possible: the inactive slot is never
+mounted.** Not read-write, and preferably not at all. Mounting an ext4 filesystem
+read-only still replays the journal by default, which writes to the device and
+invalidates every digest taken before it. If it must ever be mounted,
+`ro,norecovery`. The scrubber reads the block device directly and therefore
+sidesteps this entirely.
+
+Write it down as an invariant rather than leaving it as a habit — this is
+precisely the kind of rule that is obeyed for a year and then broken by a
+one-line debugging convenience.
+
+**4. Self-heal means re-provision, not repair.** Do not attempt to fix a slot that
+failed its digest. Rewrite it. The source, in preference order:
+
+- **The running slot**, cloned block-for-block. If root is mounted **read-only** —
+  and it should be; the persistent state already lives on p7 by design — then the
+  running filesystem is a consistent snapshot at all times and can be cloned with
+  no freeze and no snapshot machinery. This is a second, independent argument for
+  read-only root, and it is a strong one. If root is read-write, this needs
+  `fsfreeze` and becomes considerably more delicate.
+- **A bundle stashed on p7**, if one is kept there.
+
+⚠️ **Open question this exposes: the two roots are not currently identical.** Each
+carries a per-slot `fstab`, so a block clone of A into B produces a root that
+mounts the wrong partition. Two ways out, and the choice belongs in `layout.sh`:
+
+- *(a)* clone, then fix up the one differing file — simple, but re-introduces a
+  write to the standby slot and invalidates the just-taken digest;
+- *(b)* remove the per-slot difference so the roots are genuinely identical,
+  leaving `cmdline.txt` in the per-slot bootfs as the only thing that differs.
+  This makes the one-rootfs invariant literally true on-device, makes the clone a
+  pure block copy, and lets the *active* slot be scrubbed against the same digest
+  as the standby — which naive A/B never verifies at all.
+
+Option (b) is the better shape and interacts with the already-recorded `PARTUUID`
+question. Neither is decided here.
+
+##### ⏳ Recovery path — the case where both slots are gone
+
+A third root is too expensive, and the number says so rather than the intuition:
+`layout.sh summary` reports a 13856 MiB minimum image today, and a third 6144 MiB
+slot takes that to **20004 MiB** — it breaks a 16 GB card outright and takes two
+thirds of a 32 GB one. The mechanism to cover this instead is already identified
+in this section and still unclaimed: `[boot_count>N]` inside a slot's own
+`config.txt` can select a recovery `initramfs` without Linux having to run.
+Roughly 50 MB inside an existing 512 MB bootfs — about one percent of the cost of
+a third slot.
+
+The recovery initramfs mounts p7, finds a stashed bundle, re-provisions a slot,
+rewrites the selector, and reboots. It does not need networking and it does not
+need the failed root to be intelligible.
+
+⚠️ **This has a prerequisite that is easy to miss and would turn the safety
+mechanism into a fault generator.** `boot_count` is cleared **only on power
+loss** — recorded in the re-verification below as a property of the counter, and
+it is a hazard here. A box that reboots often without losing power accumulates
+counts and will eventually trip `[boot_count>3]` on a perfectly healthy system,
+dropping into recovery for no reason. So: **the success path must reset
+`boot_count` to zero.** It is settable via `vcmailbox`, and `/usr/bin/vcmailbox`
+is already on the box — verified live on pi-server 2026-08-23. That reset is not
+an optimisation; without it the feature is a time bomb.
+
+The ordering matters: reset `boot_count` *after* the health check passes, as part
+of the same success path that calls mark-good. A reset anywhere earlier defeats
+the counter.
+
+⚠️ **Which file it lands in is already decided by the file cap, not by taste.**
+`molniya-health-check.sh` is at **399 of 400** and cannot take it — and should not
+have it anyway, since the checker deliberately judges without acting.
+`molniya-mark-good.sh` (74 lines) is the success path, is already the only thing
+that acts on exit 0, and has the room.
+
+##### What none of this covers, stated plainly
+
+Redundancy claims are worth exactly as much as their stated limits, so — the
+coverage table above, re-cast for the whole of 4d with the standby slot included:
+
+| Failure | Covered by | Status |
+|---|---|---|
+| Bad update, slot unbootable | A/B + tryboot | ✅ built |
+| Latent corruption in the standby slot | scrub + verify-after-write | ⏳ decided 2026-09-02, unbuilt |
+| Both slots unusable | recovery initramfs via `boot_count` | ⏳ decided 2026-09-02, unbuilt |
+| **p1 — the 16 MB selector** | nothing | ❌ **uncovered** |
+| Whole-device failure (card/SSD dies) | nothing on-device | ❌ out of scope |
+| Loss of the box | nothing | ❌ out of scope |
+
+**p1 deserves the attention.** Sixteen megabytes of journal-less FAT16 decides
+whether the machine boots at all, and no amount of slot redundancy sits
+underneath it. The existing discipline around it — mounted `ro`, remounted `rw`
+for the instant of a write, temp file written, read back, re-parsed, renamed only
+on an exact match — is currently doing more work for this project's reliability
+than the entire A/B mechanism. It should be treated as the crown jewel it is.
+
+⚠️ **Unverified and worth knowing: what the firmware does with a *corrupt*
+`autoboot.txt`, as distinct from a missing one.** The documented behaviour for
+absent is not the same question as malformed, and the answer determines whether a
+backup copy on p7 is useful or pointless. This is testable on pi-server — write a
+deliberately mangled selector, observe, restore — and it is **recorded here as a
+proposed test, not a scheduled one**.
+
+**Device failure is a separate layer and should not be smuggled into 4d.** The
+answers there are `BOOT_ORDER` fallback to a rescue image on the SD slot, and the
+fact that a reproducible builder makes a dead card a ten-minute reflash rather
+than a data-loss event — the backup is the manifest, not a mirror. Both belong in
+their own item.
+
+**Build order, if only part of this gets built.** Item 1 is the highest value per
+line of code by a wide margin and depends on nothing else. Item 2 depends on the
+digest bookkeeping item 1 introduces. Item 4 depends on the read-only-root
+decision. The recovery initramfs is last and is the only one that is genuinely
+large. Expect two new files — `molniya-scrub.sh` and `molniya-reprovision.sh` —
+rather than growth of existing ones, and update the headroom table when they land.
+
 **Storage cost:** two roots plus a data partition. Size the image accordingly and
 state the minimum card size in the release notes — this is also an argument for
 the NVMe HAT path, which is why the U-Boot PCIe limitation above is disqualifying
