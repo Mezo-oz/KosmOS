@@ -499,12 +499,31 @@ Two things worth recording because they validate the rule rather than merely fol
   exactly the room the thermal work needed. That is the trigger doing its job: the file grew in
   capability without growing past the cap.
 
-**The asymmetry this created is now the live one.** `run-latency-bench.sh` uses the helpers;
-`run-sdr-bench.sh` still carries its own `read_governor`/`set_governor` and `detect_config`
-copies (see its own note at line 34). **Do not "finish the job" by converting it on sight** —
-that is the tidiness argument the rule exists to refuse. It converts when *it* must grow past
-the cap; it is at 363 with the helpers already written and tested, so that conversion will be
-cheap whenever the trigger actually fires.
+~~**The asymmetry this created is now the live one.**~~ ✅ **Retired 2026-09-01 —
+the trigger fired.** `run-sdr-bench.sh` kept its own `read_governor`/`set_governor`
+and `detect_config` copies, and the rule said not to convert them on sight but to
+wait until the file had to grow past the cap. It did: `eb2e034` added thermal
+gating and the conversion paid for it, landing at 398 lines. Both harnesses now
+call the helpers, and the duplication row is gone.
+
+⚠️ **The conversion was left one line short, and the cost is worth recording
+because it is the rule's own failure mode.** `set_governor` and `detect_config`
+were converted; the single `read_governor` call in Main was not, so
+`run-sdr-bench.sh` referenced a function that no longer existed anywhere in the
+file. Under `set -euo pipefail` that is exit 127 on the *first* statement of
+Main — the harness could not start at all, and would have been discovered by a
+human standing at the hardware with the dongle already plugged in. Fixed
+2026-09-03 to `"$SELF_DIR/governor.sh" read`, matching `run-latency-bench.sh:337`.
+
+**Nothing in the tree could have caught it**, and that is the part to learn from.
+shellcheck does not resolve command names, so `-S style` at zero says nothing
+about whether `read_governor` exists; the file's own line count was unchanged, so
+the headroom table was no help; and the script has never been executed, so no run
+had ever reached line 336. **A partial extraction is more dangerous than no
+extraction**, because the copy it removes and the call it leaves behind are in
+different parts of a 400-line file. When the trigger next fires, grep the old
+names to zero before committing — that is the check that would have caught this
+in five seconds.
 
 **Trigger — the only one.** Extract when a file must grow past the 400-line cap
 and cannot lose the lines elsewhere. Nothing else counts: not tidiness, not the

@@ -333,7 +333,7 @@ run_one() {
 
 mkdir -p "$OUT_DIR"
 
-ORIGINAL_GOV=$(read_governor)
+ORIGINAL_GOV=$("$SELF_DIR/governor.sh" read)
 trap restore_state EXIT
 
 RUN_COUNT=$(( ${#RATES[@]} * 2 ))
