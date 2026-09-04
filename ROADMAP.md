@@ -3393,6 +3393,7 @@ v1.0   ......    Full release — documented, tested, flashable image
 MolniyaOS/
 ├── ✅ README.md                 # Project overview and quick start
 ├── ✅ ROADMAP.md                # This document (must be tracked in the repo)
+├── ✅ STUDY-GUIDE.md            # First-principles companion; read it with the code open
 ├── ✅ LICENSE                   # GPLv3 — the kernel stays GPL-2.0 upstream
 ├── ✅ .gitattributes            # Keep — prevents CRLF breaking shebangs
 ├── .github/workflows/
