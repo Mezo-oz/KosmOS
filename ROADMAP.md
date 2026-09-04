@@ -735,6 +735,147 @@ into a Starlink modem, and no amount of architectural readiness changes it.
 Writing that down plainly costs nothing now and saves walking it back from a
 README that implied otherwise.
 
+### The appliance is headless. This is architectural, not deferred.
+
+*Adopted 2026-09-02.* No display server, no desktop session, no window manager,
+no display manager in the image. TUI and curses are fine. This sits here beside
+*openness is architectural* rather than in a phase, because it is a property of
+what MolniyaOS is, not a milestone it passes.
+
+It hardens the 2026-08-27 *there is no "headless build" and "GUI build"* decision
+in Phase 3 rather than restating it. That decision said one image and the head is
+an optional module, and left a local desktop as a module that could exist. This
+one says the display stack is not in the image and is not coming — the optional
+module pattern still applies to the *head*, and the head is a web server.
+
+⚠️ **The distinction that decision already drew still holds and is the reason
+this rule is cheaper than it sounds: GUI *applications* are in the image and
+stay there.** SatDump's GUI and SDR++ are both built by 3b/3c. What is excluded
+is the display server and session they would need in order to run locally, not
+the binaries. "Headless" here means nothing can paint on a local screen, not that
+nothing GUI-shaped is installed.
+
+**A GUI later does not reverse this**, and that is the point worth understanding
+before anyone treats the rule as a sacrifice. The two interfaces a field
+appliance actually wants are already compatible with it:
+
+- **A web dashboard is an HTTP server.** The GUI executes in a browser on the
+  operator's laptop. `dump1090`'s map already works this way, and the v0.6
+  dashboard is scheduled to. Headless costs it nothing.
+- **GNU Radio's design surface belongs on the workstation.** GRC runs on the M1,
+  and the flowgraph it generates is a `.py` file that gets deployed. That is the
+  normal GNU Radio workflow, not a concession — the appliance runs flowgraphs, it
+  does not author them.
+
+#### The distinction that decides how much this saves
+
+"Headless" is two separate removals and only one of them is cheap:
+
+| | What | Approx. per slot | Cost to remove |
+|---|---|---|---|
+| **Display stack** | X/Wayland, desktop, display manager, mesa, fonts | ~400–700 MB | **none** |
+| **Qt shared libraries** | `libqt5core/gui/widgets`, `libqwt` — present, never loaded | ~150–250 MB | high |
+
+⚠️ *Both figures are estimates and must be replaced with measurements from
+`dpkg-query -Wf '${Installed-Size}\t${Package}\n' | sort -rn` before anyone acts
+on the ranking. They are recorded as estimates so the next reader knows which
+numbers are evidence and which are inference.*
+
+✅ **Verified 2026-09-02 against packages.debian.org: Debian's `gnuradio` package
+hard-depends on Qt.** It requires `libgnuradio-qtgui`, `libqt5core5a` and
+`libqt5widgets5` — and, in bookworm, `libjs-mathjax`. There is no
+`gnuradio-headless` package. So the Qt *libraries* arrive with GNU Radio whether
+or not a display exists.
+
+**That is acceptable and the second row stays undone.** Shared objects that are
+never dlopened cost disk and nothing else — no memory, no scheduler, no attack
+surface reachable without something loading them. Escaping them means building
+GNU Radio from source with `-DENABLE_GR_QTGUI=OFF`, which converts a packaged
+dependency into a maintenance burden and puts the project one step closer to
+being a fork. That trade is refused here, and can be revisited only if the image
+budget is actually failing because of it.
+
+**The governing preference, recorded so the ranking above is not re-litigated
+every time the image grows: light and plug-and-play, in that order of
+tie-breaking.** Light means the display stack never goes in and Recommends stays
+off. Plug-and-play means the image is something you flash and use, not something
+you build — so the things refused here are the ones that turn it back into a
+build project: a source-built GNU Radio, a second variant, a hand-maintained
+fork. **GUI applications stay.** SatDump's GUI and SDR++ are installed, cost
+disk and nothing else without a display server to paint on, and removing them
+would buy back megabytes at the price of a divergence from the packages
+everything else is pinned against. Disk is the cheap resource here; build
+complexity is the expensive one, and that is the trade this whole section makes.
+
+⚠️ **Open question, answerable on the build host in one command and worth
+answering before any of the above is acted on: are GNU Radio's Python bindings
+inside Debian's `gnuradio` package, or split out?** If they are inside, then
+hand-picking `libgnuradio-*` without the metapackage is impossible, the Qt
+libraries are forced no matter what is decided here, and the second row of the
+table above is not merely refused but unavailable. `apt-cache show gnuradio` and
+`dpkg -L gnuradio | grep dist-packages` settle it — no reboot, no hardware, no
+pi-server time.
+
+⚠️ **Open question: which number would an image budget actually gate — on-card
+bytes, or the compressed release artifact?** They rank the slimming targets
+differently, and not slightly: Python's stdlib is text and compresses hard,
+Qt's shared objects barely compress at all, so a budget in `.img.gz` bytes
+promotes Qt to the top of the list while a budget in on-card bytes leaves it
+where this section put it. The 4a run is the measure of how far apart the two
+numbers are — 14 GB apparent against a **3.57 GB** `.img.gz`. No such gate
+exists in the tree today; `.github/workflows` carries `shellcheck.yml` and
+nothing else, and no script names a budget. When one is written, it has to say
+which number it means in the same commit that introduces it.
+
+#### The mechanisms, in payoff order
+
+1. **`APT::Install-Recommends "false"`, set in the stage script.** One line, and
+   the single largest lever. Recommends is the mechanism by which desktops, font
+   sets and doc toolchains arrive behind packages that look innocent.
+2. **`dpkg` path-excludes** for `/usr/share/doc`, `/usr/share/man`,
+   `/usr/share/locale`, configured at debootstrap time rather than cleaned up
+   afterwards. This also neutralises `libjs-mathjax`'s payload without fighting
+   its dependency.
+3. ✅ **Deleting the stock module trees — already done, 4a stage 4.** The patch
+   this section came from listed it as the largest free win still available; it
+   is not, because `--slim-image` took both `-rpi-v8` and `-rpi-2712` trees out
+   in the 2026-08-24 run — 64 MiB per slot, 128 MiB total — and
+   `verify-image.sh --release` asserts it. Recorded here only so the next reader
+   does not go looking for it twice.
+
+**Never install rather than install-then-remove.** Removal leaves maintainer
+scripts, config residue and a build whose output depends on ordering. The
+one-rootfs invariant is easier to keep if the rootfs never contained the thing.
+
+#### Make it mechanical, or it will not hold
+
+Add an assertion to `verify-image.sh` that no `xserver-*`, `*-desktop-*` or
+display-manager package is installed in either root. Without it, "headless" is a
+habit that survives exactly until someone apt-installs a tool with an unnoticed
+Recommends, and the regression is invisible until the image is measured months
+later. Same reasoning as the never-mount-the-standby invariant in 4d: a rule that
+matters is enforced by a script, not remembered.
+
+⚠️ `verify-image.sh` is at **399 of 400**, so per the extraction rule this
+assertion does not go into it — it goes into a helper the way the RAUC checks
+went into `verify-rauc.sh`.
+
+#### ⏳ Parked, deliberately and by name: headless usability
+
+A shell-only appliance has to be operable by someone who is cold, in a field,
+holding a phone. That is a real requirement, it is **not** solved by this rule,
+and it is made harder by it. Parking it explicitly so it is a known debt rather
+than a later discovery:
+
+- a single well-designed `molniyactl`-style entry point instead of a scattering
+  of scripts, so there is one thing to remember
+- `--help` output written for someone who has not read the docs
+- the first-boot wizard (4b) carrying more of the load, since it is the one
+  moment a human is definitely present
+- status legible from `motd` and `systemctl status` without a manual
+
+None of this is designed. It is the next thing to design after the image slims.
+
 ---
 
 ## Proof of Claim: RT Kernel Benchmark (v0.25 — Before the SATCOM Stack)
